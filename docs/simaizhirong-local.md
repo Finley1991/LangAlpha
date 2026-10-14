@@ -1,6 +1,6 @@
 # 思迈挚融本地验证
 
-本 fork 首个增量是期初模拟账本；不连接券商、不执行实盘。研究能力沿用上游，期初值使用独立的 simulation 表，不写入上游累加式 portfolio API。
+本 fork 已实现期初模拟账本与建议/确认/订单/成交审计；不连接券商、不执行实盘。研究能力沿用上游，期初值使用独立的 simulation 表，不写入上游累加式 portfolio API。
 
 ## 本次环境
 
@@ -56,7 +56,7 @@ PYTHON_DOTENV_DISABLED=1 uv run python -m scripts.utils.import_simulation_openin
 
 ```bash
 uv run ruff check src/ libs/market-protocol/
-uv run pytest tests/unit/server/services/test_simulation.py tests/unit/server/test_import_layering.py tests/unit/server/database/test_shared_lock_session.py tests/unit/server/database/test_portfolio_db.py tests/unit/server/app/test_portfolio.py -q
+uv run pytest tests/unit/server/services/test_simulation.py tests/unit/server/services/test_simulation_orders.py tests/unit/server/test_import_layering.py tests/unit/server/database/test_shared_lock_session.py tests/unit/server/database/test_portfolio_db.py tests/unit/server/app/test_portfolio.py -q
 cd web
 pnpm test src/pages/Simulation/__tests__
 pnpm typecheck
@@ -65,3 +65,28 @@ pnpm build
 ```
 
 `tests/integration/test_simulation_opening.py -m integration` 验证真实事务、12 个并发请求、回滚、冲突和认证用户隔离。运行前必须将全部 `TEST_DB_*` 指向独立可丢弃数据库；现有集成 fixture 会重建该库的 public schema，不能使用开发或生产库。本次使用专用测试库完成验证，测试不调用付费模型、不读取个人文件。
+
+## 模拟订单与当前账本
+
+迁移 068 增加账户当前状态、建议、订单、成交和审计表，不改写迁移 067 或原始期初快照。账户行锁与唯一约束保证多进程下的幂等；成交、现金、仓位、成本和审计在同一事务中更新。金额与价格从浏览器以十进制字符串传入，不接受浮点数金额。
+
+| 接口（均在 `/api/v1/users/me/simulation` 下） | 行为 |
+| --- | --- |
+| `GET /ledger` | 当前现金、预留、保守可卖数量、精确成本和近期记录；读取时释放到期订单预留 |
+| `POST /suggestions` | 保存带请求 UUID、账本版本、理由、反证、限价和时区期限的手动建议；相同请求重试不重复生成 |
+| `POST /suggestions/{id}/confirm` | 明确确认建议版本、账本版本和模拟用途；验证资金/数量后只建立订单和预留 |
+| `POST /suggestions/{id}/cancel`、`POST /orders/{id}/cancel` | 结束未确认建议或待执行订单；取消订单释放预留，不记成交 |
+| `GET /events?limit=50&before={cursor}` | 通过稳定游标向前翻页；现金事件可与期初现金对账 |
+| `GET /suggestions/{id}`、`GET /orders/{id}`、`GET /fills/{id}` | 按当前认证用户回查原始记录，超过近期 100 条仍可追溯 |
+
+所有响应 `Cache-Control: no-store`。建议绑定账本版本；其他确认、取消、到期或成交改变资源时，旧卡片失效，需重新生成后再确认。重复确认同一建议回读同一订单，包括已取消/到期的订单，不重新创建。
+
+`sim-fees-v1` 是实验参数：佣金 0.03%、最低 5 元，卖出模拟税费 0.05%、双向模拟过户费 0.001%、不利滑点 5 基点。卡片展示并冻结参数，不表示券商实际费率。限价买入预留包含费用；卖出按移动加权平均法摊销成本，最后一笔卖出精确清零。已实现盈亏只覆盖起算后的模拟成交，历史未知费用不补造。未知批次分配按最晚已知日期保守解锁。
+
+当前规则仅支持沪深主板普通 A 股；其他板块/品种等待规则核验。模拟为整单成交，不模拟盘口排队、部分成交、集合竞价或公司行动。可信适配器须提供证券/交易日历核验、停牌状态、价格边界、来源及证据。报价和执行时刻都须处于北京时间连续竞价时段；报价晚于确认、同日、非未来且不超过 60 秒；不利滑点后的成交价仍须满足限价和已核验价格边界。
+
+**R2 行情适配器尚未接通**：没有浏览器报价注入接口，也未启用自动成交任务。真实账户已保存的期初信息没有被试验下单修改；产品中确认的订单保持等待有效行情，直到取消或到期，不拿历史收盘价补成交。不展示未经核验的市值/浮动盈亏/总资产。
+
+验证实例 `http://127.0.0.1:15174/simulation` / 后端 `18001` 专门绑定虚构 `simaizhirong-smoke` 用户；用户入口仍是 15173 / 18000。内部测试行情默认禁用，显式启用也仅允许隔离测试用户名。虚构 HTTP/PostgreSQL 验证完成买卖、12 次并发确认/成交、取消、T+1、精确成本与现金对账；前端确认弹窗、待执行/取消、审计回查和 390px 无整体横向溢出已实际验收。`tests/integration/test_simulation_orders.py` 使用真实数据库及受控测试时间，包含竞争预留、终态、错误行情、隔离、认证、审计游标与事务回滚。未运行完整测试套件、真实行情、研究沙箱或通知链路。
+
+本机新进程的运行时环境显式配置 `PYTHONPATH` 为仓库根、`src` 与 `libs/market-protocol`，以便解析本地源码包；此路径配置保留在被忽略的本机启动环境中。

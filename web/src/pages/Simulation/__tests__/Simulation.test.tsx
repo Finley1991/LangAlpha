@@ -5,6 +5,7 @@ import Simulation from '../Simulation';
 
 const { useOpeningMock } = vi.hoisted(() => ({ useOpeningMock: vi.fn() }));
 vi.mock('../useOpening', () => ({ useOpening: useOpeningMock }));
+vi.mock('../SimulationLedger', () => ({ default: () => null }));
 
 describe('opening snapshot', () => {
   it('keeps all reported dates and labels unknown batch allocation', () => {
@@ -21,6 +22,6 @@ describe('opening snapshot', () => {
     expect(screen.getByText('1234.5678')).toBeInTheDocument();
     expect(screen.getByText('12.35')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '确认初始化模拟账本' })).not.toBeInTheDocument();
-    expect(screen.getByText(/模拟下单暂未开放/)).toBeInTheDocument();
+    expect(screen.getByText(/已有期初值不能在此覆盖/)).toBeInTheDocument();
   });
 });

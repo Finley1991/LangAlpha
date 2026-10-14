@@ -14,6 +14,9 @@ export const queryKeys = {
   simulation: {
     all: ['simulation'],
     opening: () => [...queryKeys.simulation.all, 'opening'],
+    ledger: () => [...queryKeys.simulation.all, 'ledger'],
+    events: () => [...queryKeys.simulation.all, 'events'],
+    record: (kind?: string, id?: string) => [...queryKeys.simulation.all, 'record', kind, id],
   },
   user: {
     all:         ['user'],
