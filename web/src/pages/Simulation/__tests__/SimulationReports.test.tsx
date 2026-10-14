@@ -20,16 +20,50 @@ const report: ReportDetail = {
 };
 function setup() {
   return {
-    ledger: { data: { ledger: { version: 2 } }, isPending: false, isError: false, isFetching: false, refetch: vi.fn() },
+    ledger: { data: { ledger: { account_id: 'account-a', version: 2 } }, isPending: false, isError: false, isFetching: false, refetch: vi.fn() },
     history: { data: { pages: [{ items: [{ report_id: 'older-report', sequence: 1, report_date: '2026-10-14', generated_at: '2026-10-14T02:00:00Z', expires_at: '2026-10-15T02:00:00Z', snapshot_version: 1, title: report.report.title, status: 'awaiting_data', is_stale: true, expired: false }], next_cursor: 1 }] as ReportPage[] }, isPending: false, isSuccess: true, isError: false, isFetchingNextPage: false, hasNextPage: true, fetchNextPage: vi.fn(), refetch: vi.fn() },
     detail: { data: report, isPending: false, isError: false, error: null as Error | null, refetch: vi.fn() },
     generate: { mutate: vi.fn(), isPending: false, isError: false, error: null as Error | null },
   };
 }
 let state: ReturnType<typeof setup>;
-beforeEach(() => { state = setup(); useReportsMock.mockImplementation(() => state); });
+beforeEach(() => { sessionStorage.clear(); state = setup(); useReportsMock.mockImplementation(() => state); });
 
 describe('frozen checking reports', () => {
+  it('shows storage failure without posting a report that cannot be retried safely', () => {
+    render(<SimulationReports />);
+    const blocked = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError'); });
+    try {
+      fireEvent.click(screen.getByRole('button', { name: '生成当前持仓检查' }));
+      expect(screen.getByRole('alert')).toHaveTextContent('无法保存重试标识');
+      expect(state.generate.mutate).not.toHaveBeenCalled();
+    } finally { blocked.mockRestore(); }
+  });
+
+  it('restores a lost-response request after remount and isolates accounts', () => {
+    const first = render(<SimulationReports />);
+    fireEvent.click(screen.getByRole('button', { name: '生成当前持仓检查' }));
+    const submitted = state.generate.mutate.mock.calls[0][0];
+    first.unmount();
+    const second = render(<SimulationReports />);
+    fireEvent.click(screen.getByRole('button', { name: '生成当前持仓检查' }));
+    expect(state.generate.mutate.mock.calls[1][0]).toEqual(submitted);
+    second.unmount();
+    state.ledger = { ...state.ledger, data: { ledger: { account_id: 'account-b', version: 2 } } };
+    render(<SimulationReports />);
+    fireEvent.click(screen.getByRole('button', { name: '生成当前持仓检查' }));
+    expect(state.generate.mutate.mock.calls[2][0].client_request_id).not.toBe(submitted.client_request_id);
+  });
+
+  it('stops showing cached history when verification fails', () => {
+    const { rerender } = render(<SimulationReports />);
+    expect(screen.getByRole('button', { name: '查看报告 1' })).toBeInTheDocument();
+    state.history = { ...state.history, isError: true };
+    rerender(<SimulationReports />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看报告 1' })).not.toBeInTheDocument();
+  });
+
   it('generates only on click, binds the current version and keeps failed retry identity', () => {
     const { rerender } = render(<SimulationReports />);
     expect(state.generate.mutate).not.toHaveBeenCalled();
@@ -43,7 +77,7 @@ describe('frozen checking reports', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('连接中断');
     fireEvent.click(action);
     expect(state.generate.mutate.mock.calls[1][0]).toEqual(req);
-    state.ledger = { ...state.ledger, data: { ledger: { version: 3 } } };
+    state.ledger = { ...state.ledger, data: { ledger: { account_id: 'account-a', version: 3 } } };
     rerender(<SimulationReports />); fireEvent.click(action);
     expect(state.generate.mutate.mock.calls[2][0].client_request_id).not.toBe(req.client_request_id);
     expect(state.generate.mutate.mock.calls[2][0].account_version).toBe(3);

@@ -3,7 +3,8 @@ import { useLocale } from '@/hooks/useLocale';
 import { createDateFormatter } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { ReportDetail, ReportRequest } from './reportApi';
+import type { ReportDetail } from './reportApi';
+import { pendingReportRequest, finishReportRequest } from './pendingReport';
 import { useReports } from './useReports';
 
 const reportTime = createDateFormatter({ year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Shanghai' });
@@ -59,16 +60,21 @@ function ReportBody({ data }: { data: ReportDetail }) {
 export default function SimulationReports() {
   const locale = useLocale();
   const [selectedId, setSelectedId] = useState<string>();
-  const [request, setRequest] = useState<ReportRequest>();
+  const [inputError, setInputError] = useState('');
   const { ledger, history, detail, generate } = useReports(selectedId);
   const current = ledger.data?.ledger;
-  const items = history.data?.pages.flatMap((page) => page.items) ?? [];
+  const items = history.isError ? [] : history.data?.pages.flatMap((page) => page.items) ?? [];
 
   function create() {
     if (!current || generate.isPending) return;
-    const next = request?.account_version === current.version ? request : { client_request_id: crypto.randomUUID(), account_version: current.version };
-    setRequest(next);
-    generate.mutate(next, { onSuccess: (data) => { setRequest(undefined); setSelectedId(data.report.report_id); } });
+    setInputError('');
+    try {
+      const next = pendingReportRequest(current.account_id, current.version);
+      generate.mutate(next, { onSuccess: (data) => {
+        finishReportRequest(current.account_id, next);
+        setSelectedId(data.report.report_id);
+      } });
+    } catch (error) { setInputError(message(error)); }
   }
 
   return <section id="simulation-reports" aria-label="持仓检查日报" className="rounded-lg border border-border bg-card p-6 space-y-4">
@@ -77,6 +83,7 @@ export default function SimulationReports() {
     {ledger.isPending && <p role="status">正在读取当前账本…</p>}
     {ledger.isError && <div role="alert">{message(ledger.error)}<Button variant="outline" onClick={() => void ledger.refetch()}>重试读取账本</Button></div>}
     <Button disabled={!current || generate.isPending || ledger.isFetching} onClick={create}>{generate.isPending ? '正在生成检查…' : '生成当前持仓检查'}</Button>
+    {inputError && <p role="alert">{inputError}</p>}
     {generate.isError && <p role="alert">{message(generate.error)}；可重试，同一请求不会重复保存。</p>}
     {history.isPending && current && <p role="status">正在读取报告历史…</p>}
     {history.isError && <div role="alert">{message(history.error)}<Button variant="outline" onClick={() => void history.refetch()}>重试读取报告历史</Button></div>}
@@ -87,7 +94,7 @@ export default function SimulationReports() {
         <Button variant="outline" onClick={() => setSelectedId(item.report_id)}>查看报告 {item.sequence}</Button>
       </li>)}
     </ul>
-    {history.hasNextPage && <Button variant="outline" disabled={history.isFetchingNextPage} onClick={() => void history.fetchNextPage()}>{history.isFetchingNextPage ? '正在读取…' : '读取更早报告'}</Button>}
+    {history.hasNextPage && !history.isError && <Button variant="outline" disabled={history.isFetchingNextPage} onClick={() => void history.fetchNextPage()}>{history.isFetchingNextPage ? '正在读取…' : '读取更早报告'}</Button>}
     <Dialog open={!!selectedId} onOpenChange={(open) => { if (!open) setSelectedId(undefined); }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader><DialogTitle>{detail.data?.report.title ?? '持仓检查日报'}</DialogTitle><DialogDescription>仅模拟盘。这里展示生成时的冻结事实，缺失数据保留待核实。</DialogDescription></DialogHeader>
