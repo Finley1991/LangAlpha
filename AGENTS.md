@@ -1,5 +1,20 @@
 # langalpha
 
+## 思迈挚融 fork 开发边界
+
+本 fork 用于思迈挚融首版的个人 A 股模拟投资助手；下列规则适用于本仓库，后文保留上游架构与目录约定。
+
+- 用户初始化模拟仓位、成本、日期和现金；逐笔点击确认后才建立模拟订单。未确认、取消或过期不成交，不接国金账户、不执行实盘，PTrade 留作后续。现有上游券商能力不属于首版采用范围。
+- 金额使用精确十进制；初始化幂等，确认、订单、成交、仓位和现金可追溯，关键写入同一事务完成，重复点击或任务重放不得重复记账。模型输出只能形成建议，不直接改余额或授权成交。
+- 服务端验证身份、资源归属、输入、状态、期限和幂等；前端处理加载、空数据、失败、重试与重复提交，关键操作以服务端结果为准。界面持续标注模拟盘，实际页面验收不能用构建通过代替。
+- 默认不读取 `.env`、令牌、密码和私钥；用户明确授权具体路径与用途后，仅由接入脚本或产品运行时安全加载，不展示内容、输出或提交凭据。真实持仓、投资档案和私人研究留在授权私有目录，不进入源码、测试夹具、日志或截图；测试使用虚构数据。
+- 两品牌开发期月预算合计上限 1,000 元；已有订阅或积分不等于可用 API 额度。模型、行情和通知分别验证，缺失数据标记待核实，不拿旧收盘价冒充当前可成交行情。
+- 保留用户已有改动，二开使用 `codex/` 分支；按相关范围运行 lint、类型检查、测试、构建和真实依赖验证，准确记录未验证项。未经当前任务授权不公开部署、收费、联系他人或执行真实账户操作。
+- 经营决策与唯一 TODO 在独立 OPC_AI 仓库维护，不在这里复制经营待办或私人数据；从 OPC_AI 发起的任务同时读取其工程规范。此处规则自包含，不要求其他克隆依赖相邻目录。
+- 本地验证使用独立数据库、Redis、端口与虚构数据，不清理或复用其他项目的服务。产品入口规范是协作约定，只有实际配置并验证的 CI/hooks 才能称为自动门禁。
+
+工程工具链与模块细节以本文件后文及就近 `AGENTS.md` 为准；新增依赖、迁移或契约变化须有明确用途、兼容性及验证证据，不夹带无关升级和重构。
+
 Core AI agent service of the Ginlix financial research platform. One agent, the **PTC agent**, wired with a full Daytona sandbox and the complete toolset (code execution, MCP financial-data tools, charts, subagent orchestration), in one of two roles per turn. PTC = **Programmatic Tool Calling** (see [PTC pattern](#ptc-pattern)); it names the technique, not a product.
 
 - **Analyst** (default): the agent inside a workspace. Does the R&D and produces the deliverables, which stay in that workspace.

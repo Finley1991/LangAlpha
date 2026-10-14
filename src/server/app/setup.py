@@ -1184,6 +1184,7 @@ app.add_exception_handler(SandboxTransientError, _sandbox_unreachable_handler)
 from src.server.app.threads import router as threads_router
 from src.server.app.sessions import router as sessions_router
 from src.server.app.utilities import health_router
+from src.server.app.simulation import router as simulation_router
 from src.server.app.computers import router as computers_router
 from src.server.app.workspaces import router as workspaces_router
 from src.server.app.workspace_files import router as workspace_files_router
@@ -1343,6 +1344,7 @@ app.include_router(
     mcp_servers_router
 )  # /api/v1/workspaces/{id}/mcp/servers - Per-workspace MCP server config
 app.include_router(health_router)  # /health - Health check
+app.include_router(simulation_router)
 app.include_router(
     preview_redirect_router
 )  # /api/v1/preview/{workspace_id}/{port} - Old preview URLs, redirected to /a/<code>
