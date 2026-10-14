@@ -16,7 +16,8 @@ from src.server.models.simulation_orders import (
     LedgerResponse,
     SuggestionRequest,
 )
-from src.server.services import simulation
+from src.server.models.simulation_reports import ReportRequest, ReportDetail, ReportPage
+from src.server.services import simulation, simulation_reports as reports
 from src.server.services import simulation_orders as trading
 from src.server.utils.api import CurrentUserId, handle_api_exceptions
 
@@ -115,6 +116,28 @@ async def events(
     return EventsResponse(
         **await financial_action(trading.get_events(user_id, before, limit))
     )
+
+
+@router.post("/reports", response_model=ReportDetail)
+@handle_api_exceptions("generate simulation report", logger)
+async def create_report(request: ReportRequest, user_id: CurrentUserId):
+    return await financial_action(reports.generate(user_id, request))
+
+
+@router.get("/reports", response_model=ReportPage)
+@handle_api_exceptions("list simulation reports", logger)
+async def report_list(
+    user_id: CurrentUserId,
+    before: int | None = Query(None, ge=1),
+    limit: int = Query(20, ge=1, le=50),
+):
+    return await financial_action(reports.list_reports(user_id, before, limit))
+
+
+@router.get("/reports/{report_id}", response_model=ReportDetail)
+@handle_api_exceptions("read simulation report", logger)
+async def report_detail(report_id: UUID, user_id: CurrentUserId):
+    return await financial_action(reports.get_report(user_id, report_id))
 
 
 @router.get("/{kind}/{record_id}", response_model=ActionResponse)

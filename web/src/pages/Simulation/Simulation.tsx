@@ -7,6 +7,7 @@ import { useOpening } from './useOpening';
 import type { OpeningHolding } from './api';
 import { displayAverage } from './money';
 import SimulationLedger from './SimulationLedger';
+import SimulationReports from './SimulationReports';
 
 interface DraftHolding { id: string; code: string; exchange: OpeningHolding['exchange']; name: string; quantity: string; total_cost: string; purchased_on: string }
 const emptyHolding = (): DraftHolding => ({ id: crypto.randomUUID(), code: '', exchange: 'SH', name: '', quantity: '', total_cost: '', purchased_on: '' });
@@ -75,7 +76,7 @@ export default function Simulation() {
           <p className="text-sm">已有期初值不能在此覆盖；后续更正将单独留痕。</p>
         </section>}
 
-        {snapshot && <SimulationLedger />}
+        {snapshot && <><SimulationReports /><SimulationLedger /></>}
 
         {query.isSuccess && !snapshot && <form onSubmit={submit} className="space-y-6">
           <fieldset disabled={mutation.isPending} className="space-y-6">

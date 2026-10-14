@@ -183,39 +183,45 @@ def public_fill(row: dict) -> dict:
     }
 
 
+async def ledger_summary(tx: db.LedgerTransaction) -> dict:
+    state = initial_state(tx.account)
+    pending = await tx.pending_orders()
+    cash, available = resources(
+        state, pending, tx.now.astimezone(CHINA).date().isoformat()
+    )
+    return {
+        "account_id": str(tx.account_id),
+        "version": tx.account["ledger_version"],
+        "mode": "simulation",
+        "currency": "CNY",
+        "as_of": tx.now.isoformat(),
+        "cash": format(Decimal(state["cash"]), ".2f"),
+        "available_cash": format(cash, ".2f"),
+        "reserved_cash": format(Decimal(state["cash"]) - cash, ".2f"),
+        "realized_pnl": state["realized_pnl"],
+        "positions": [
+            {**p, "available_quantity": available[f"{p['code']}.{p['exchange']}"]}
+            for p in state["positions"]
+        ],
+        "fees": FEES,
+        "rule_version": RULE_VERSION,
+        "valuation_status": "unverified",
+        "market_data_status": "unverified",
+        "history_limit": 100,
+        "sellable_basis": "按已知日期保守计算，成交时仍须核验交易日历与证券规则",
+    }
+
+
 async def get_ledger(user_id: str) -> dict | None:
     async with db.transaction(user_id) as tx:
         if tx is None:
             return None
         await tx.expire()
-        state = initial_state(tx.account)
-        pending = await tx.pending_orders()
-        cash, available = resources(
-            state, pending, tx.now.astimezone(CHINA).date().isoformat()
-        )
         return {
-            "account_id": str(tx.account_id),
-            "version": tx.account["ledger_version"],
-            "mode": "simulation",
-            "currency": "CNY",
-            "as_of": tx.now.isoformat(),
-            "cash": format(Decimal(state["cash"]), ".2f"),
-            "available_cash": format(cash, ".2f"),
-            "reserved_cash": format(Decimal(state["cash"]) - cash, ".2f"),
-            "realized_pnl": state["realized_pnl"],
-            "positions": [
-                {**p, "available_quantity": available[f"{p['code']}.{p['exchange']}"]}
-                for p in state["positions"]
-            ],
+            **await ledger_summary(tx),
             "suggestions": [public_suggestion(s) for s in await tx.suggestions()],
             "orders": [public_order(o) for o in await tx.orders()],
             "fills": [public_fill(f) for f in await tx.fills()],
-            "fees": FEES,
-            "rule_version": RULE_VERSION,
-            "valuation_status": "unverified",
-            "market_data_status": "unverified",
-            "history_limit": 100,
-            "sellable_basis": "按已知日期保守计算，成交时仍须核验交易日历与证券规则",
         }
 
 

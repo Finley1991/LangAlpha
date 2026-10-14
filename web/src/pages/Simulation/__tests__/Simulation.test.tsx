@@ -6,6 +6,7 @@ import Simulation from '../Simulation';
 const { useOpeningMock } = vi.hoisted(() => ({ useOpeningMock: vi.fn() }));
 vi.mock('../useOpening', () => ({ useOpening: useOpeningMock }));
 vi.mock('../SimulationLedger', () => ({ default: () => null }));
+vi.mock('../SimulationReports', () => ({ default: () => null }));
 
 describe('opening snapshot', () => {
   it('keeps all reported dates and labels unknown batch allocation', () => {
