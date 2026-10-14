@@ -537,6 +537,30 @@ async def test_cancel_and_fill_race_has_one_terminal_outcome(
     assert ledger["reserved_cash"] == "0.00"
 
 
+async def test_pending_records_remain_actionable_after_100_newer_terminal_records(
+    seed_user, patched_get_db_connection, clock
+):
+    user = seed_user["user_id"]
+    await initialize(user)
+    _, old_order = await confirmed(user)
+    old_card = await service.suggest(user, request(2))
+    for _ in range(101):
+        clock[0] += timedelta(seconds=1)
+        _, newer = await confirmed(user)
+        await service.cancel_order(user, UUID(newer["order_id"]))
+
+    ledger = await service.get_ledger(user)
+    assert old_order["order_id"] in {o["order_id"] for o in ledger["orders"]}
+    assert old_card["suggestion_id"] in {
+        s["suggestion_id"] for s in ledger["suggestions"]
+    }
+    assert sum(o["status"] != "pending" for o in ledger["orders"]) == 100
+    assert ledger["reserved_cash"] == "105.00"
+    await service.cancel_order(user, UUID(old_order["order_id"]))
+    await service.cancel_suggestion(user, UUID(old_card["suggestion_id"]))
+    assert (await service.get_ledger(user))["reserved_cash"] == "0.00"
+
+
 async def test_unauthed_user_cannot_access_any_financial_path(monkeypatch):
     monkeypatch.setattr("src.server.utils.api.HOST_MODE", "platform")
     app = FastAPI()

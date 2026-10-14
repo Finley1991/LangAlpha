@@ -26,9 +26,13 @@ class LedgerTransaction:
 
     async def suggestions(self):
         await self.cursor.execute(
-            """SELECT * FROM simulation_suggestions WHERE account_id=%s
-               ORDER BY created_at DESC, suggestion_id DESC LIMIT 100""",
-            (self.account_id,),
+            """SELECT * FROM simulation_suggestions WHERE account_id=%s AND (
+                   status='pending' OR suggestion_id IN (
+                       SELECT suggestion_id FROM simulation_suggestions
+                       WHERE account_id=%s AND status<>'pending'
+                       ORDER BY created_at DESC, suggestion_id DESC LIMIT 100
+                   )) ORDER BY created_at DESC, suggestion_id DESC""",
+            (self.account_id, self.account_id),
         )
         return await self.cursor.fetchall()
 
@@ -41,9 +45,13 @@ class LedgerTransaction:
 
     async def orders(self):
         await self.cursor.execute(
-            """SELECT * FROM simulation_orders WHERE account_id=%s
-               ORDER BY confirmed_at DESC, order_id DESC LIMIT 100""",
-            (self.account_id,),
+            """SELECT * FROM simulation_orders WHERE account_id=%s AND (
+                   status='pending' OR order_id IN (
+                       SELECT order_id FROM simulation_orders
+                       WHERE account_id=%s AND status<>'pending'
+                       ORDER BY confirmed_at DESC, order_id DESC LIMIT 100
+                   )) ORDER BY confirmed_at DESC, order_id DESC""",
+            (self.account_id, self.account_id),
         )
         return await self.cursor.fetchall()
 

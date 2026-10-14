@@ -119,7 +119,7 @@ export default function SimulationLedger() {
             {s.account_version !== ledger.version && <p className="text-sm text-muted-foreground">账本或预留已变化，请重新生成建议。</p>}
           </div>}
         </article>)}
-        <p className="text-xs text-muted-foreground">建议、订单及成交各展示最近 {ledger.history_limit} 条；操作审计可向前翻页。</p>
+        <p className="text-xs text-muted-foreground">展示全部待处理建议和订单，以及各最近 {ledger.history_limit} 条终态记录；成交展示最近 {ledger.history_limit} 条，操作审计可向前翻页。</p>
       </section>
 
       <section className="space-y-4" aria-label="模拟订单">
@@ -184,7 +184,7 @@ export default function SimulationLedger() {
     </Dialog>
     <Dialog open={!!selectedRecord} onOpenChange={(open) => { if (!open) setSelectedRecord(null); }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>模拟审计记录</DialogTitle><DialogDescription>可读取历史原始建议、订单和成交，不受首页最近 100 条的限制。</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>模拟审计记录</DialogTitle><DialogDescription>可读取历史原始建议、订单和成交，不受首页终态记录数量限制。</DialogDescription></DialogHeader>
         {record.isPending && <p role="status">正在读取记录…</p>}
         {record.isError && <div role="alert">{message(record.error)}<Button variant="outline" onClick={() => void record.refetch()}>重试读取记录</Button></div>}
         {record.data && <div className="space-y-3 text-sm break-words">
