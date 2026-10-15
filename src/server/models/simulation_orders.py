@@ -52,6 +52,23 @@ class ConfirmationRequest(BaseModel):
     acknowledge_simulation: StrictBool
 
 
+class RevisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_request_id: UUID
+    suggestion_version: StrictInt = Field(gt=0)
+    account_version: StrictInt = Field(gt=0)
+    quantity: StrictInt = Field(gt=0, le=1_000_000)
+    limit_price: Price
+
+    @field_validator("limit_price", mode="before")
+    @classmethod
+    def price_string(cls, value):
+        if not isinstance(value, str):
+            raise ValueError("价格必须是十进制字符串")
+        return value
+
+
 class TrustedQuote(BaseModel):
     """Internal adapter output; never accepted by a user-facing route."""
 
@@ -99,7 +116,8 @@ class FeeBreakdown(BaseModel):
 
 
 class SuggestionData(SuggestionRequest):
-    suggestion_version: Literal[1]
+    suggestion_version: StrictInt = Field(gt=0)
+    replaces_suggestion_id: UUID | None = None
     fees: FeeAssumptions
     rule_version: Literal["sim-mainland-main-v1"]
     origin: Literal["manual_research"]

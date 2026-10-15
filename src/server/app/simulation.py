@@ -14,6 +14,7 @@ from src.server.models.simulation_orders import (
     ConfirmationRequest,
     EventsResponse,
     LedgerResponse,
+    RevisionRequest,
     SuggestionRequest,
 )
 from src.server.models.simulation_reports import ReportRequest, ReportDetail, ReportPage
@@ -77,6 +78,14 @@ async def ledger(user_id: CurrentUserId):
 async def suggest(request: SuggestionRequest, user_id: CurrentUserId):
     return ActionResponse(
         result=await financial_action(trading.suggest(user_id, request))
+    )
+
+
+@router.post("/suggestions/{suggestion_id}/revise", response_model=ActionResponse)
+@handle_api_exceptions("revise simulation suggestion", logger)
+async def revise(suggestion_id: UUID, request: RevisionRequest, user_id: CurrentUserId):
+    return ActionResponse(
+        result=await financial_action(trading.revise(user_id, suggestion_id, request))
     )
 
 

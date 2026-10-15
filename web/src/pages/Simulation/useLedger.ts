@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
-import { cancelOrder, cancelSuggestion, confirmSuggestion, createSuggestion, getEvents, getLedger, getRecord, type RecordKind } from './api';
+import { cancelOrder, cancelSuggestion, confirmSuggestion, createSuggestion, getEvents, getLedger, getRecord, reviseSuggestion, type RecordKind } from './api';
 
 export function useLedger() {
   const client = useQueryClient();
@@ -15,9 +15,10 @@ export function useLedger() {
   // No automatic mutation retry: stale cards need a new explicit decision.
   const create = useMutation({ mutationFn: createSuggestion, onSuccess: refresh, retry: false });
   const confirm = useMutation({ mutationFn: confirmSuggestion, onSuccess: refresh, onError: refresh, retry: false });
+  const revise = useMutation({ mutationFn: reviseSuggestion, onSuccess: refresh, onError: refresh, retry: false });
   const dismiss = useMutation({ mutationFn: cancelSuggestion, onSuccess: refresh, onError: refresh, retry: false });
   const cancel = useMutation({ mutationFn: cancelOrder, onSuccess: refresh, onError: refresh, retry: false });
-  return { query, events, create, confirm, dismiss, cancel };
+  return { query, events, create, confirm, revise, dismiss, cancel };
 }
 
 export function useSimulationRecord(kind?: RecordKind, id?: string) {

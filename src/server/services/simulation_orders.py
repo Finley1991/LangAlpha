@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from src.server.database import simulation_orders as db
 from src.server.models.simulation_orders import (
     ConfirmationRequest,
+    RevisionRequest,
     SuggestionRequest,
     TrustedQuote,
 )
@@ -273,6 +274,72 @@ async def suggest(user_id: str, request: SuggestionRequest) -> dict:
                 "suggestion_id": str(row["suggestion_id"]),
                 "account_version": request.account_version,
                 "suggestion_version": 1,
+                "actor": user_id,
+            },
+        )
+        return public_suggestion(row)
+
+
+async def revise(user_id: str, suggestion_id: UUID, request: RevisionRequest) -> dict:
+    async with db.transaction(user_id) as tx:
+        require_account(tx)
+        await tx.expire()
+        source = await tx.suggestion(suggestion_id)
+        if source is None:
+            raise SimulationError("NOT_FOUND", "找不到此模拟建议。", 404)
+        original = source["payload"]
+        changed = {
+            "client_request_id": str(request.client_request_id),
+            "account_version": request.account_version,
+            "suggestion_version": request.suggestion_version + 1,
+            "replaces_suggestion_id": str(suggestion_id),
+            "quantity": request.quantity,
+            "limit_price": format(request.limit_price, ".2f"),
+        }
+        previous = await tx.by_client_request(request.client_request_id)
+        if previous:
+            if any(
+                previous["payload"].get(key) != value for key, value in changed.items()
+            ):
+                raise SimulationError("REQUEST_CONFLICT", "同一请求不能提交不同修改。")
+            return public_suggestion(previous)
+        if source["status"] != "pending":
+            raise SimulationError(
+                "SUGGESTION_CLOSED",
+                "此建议已结束，不能修改；已建订单须先在订单区取消。",
+            )
+        if request.suggestion_version != original["suggestion_version"]:
+            raise SimulationError("STALE_SUGGESTION", "建议版本已变化，请重新核对。")
+        if request.account_version != tx.account["ledger_version"]:
+            raise SimulationError(
+                "STALE_LEDGER", "账本或预留已变化，请刷新后重新计算。"
+            )
+        payload = {**original, **changed}
+        validate_instrument(payload)
+        state = initial_state(tx.account)
+        delta, charges = cash_change(payload, request.limit_price)
+        payload.update(
+            estimated_cash_delta=format(delta, ".2f"),
+            estimated_fees=charges,
+            estimated_cash_after=format(Decimal(state["cash"]) + delta, ".2f"),
+        )
+        row = await tx.insert_suggestion(payload)
+        await tx.suggestion_status(suggestion_id, "cancelled")
+        await tx.event(
+            "suggestion_cancelled",
+            {
+                "suggestion_id": str(suggestion_id),
+                "replaced_by_suggestion_id": str(row["suggestion_id"]),
+                "actor": user_id,
+            },
+        )
+        await tx.event(
+            "suggested",
+            {
+                "suggestion_id": str(row["suggestion_id"]),
+                "replaces_suggestion_id": str(suggestion_id),
+                "suggestion_version": payload["suggestion_version"],
+                "account_version": request.account_version,
                 "actor": user_id,
             },
         )

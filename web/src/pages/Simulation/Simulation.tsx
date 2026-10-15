@@ -53,14 +53,16 @@ export default function Simulation() {
         <header className="space-y-3">
           <p className="text-sm text-muted-foreground">思迈挚融 · 模拟盘</p>
           <h1 className="text-2xl font-semibold">模拟投资账本</h1>
-          <p className="text-sm text-muted-foreground">保存起始仓位和现金。期初余额不计为新成交，历史费用未知不补造。</p>
-          <nav className="flex gap-5 text-sm underline" aria-label="产品入口"><Link to="/dashboard">研究工作台</Link><Link to="/setup/method">配置模型</Link></nav>
+          <p className="text-sm text-muted-foreground">核对买卖建议、修改数量并逐笔确认。所有记录仅用于模拟盘。</p>
+          <nav className="flex flex-wrap gap-5 text-sm underline" aria-label="产品入口">{snapshot && <><a href="#simulation-trading">买卖操作区</a><a href="#simulation-reports">持仓检查</a><a href="#simulation-opening">期初快照</a></>}<Link to="/dashboard">研究工作台</Link><Link to="/setup/method">配置模型</Link></nav>
         </header>
 
         {query.isPending && <p role="status">正在读取账本…</p>}
         {query.isError && <div role="alert"><p>{errorMessage(query.error)}</p><Button className="mt-3" onClick={() => void query.refetch()}>重试读取</Button></div>}
 
-        {snapshot && <section className="rounded-lg border border-border bg-card p-6 space-y-5" aria-label="期初快照">
+        {snapshot && <SimulationLedger />}
+
+        {snapshot && <section id="simulation-opening" className="rounded-lg border border-border bg-card p-6 space-y-5" aria-label="期初快照">
           <h2 className="text-lg font-semibold">期初快照已保存 · 版本 {snapshot.version}</h2>
           <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
             <div><dt className="text-muted-foreground">账本起算日期</dt><dd>{snapshot.opening_date}</dd></div>
@@ -72,11 +74,11 @@ export default function Simulation() {
             <thead><tr>{['证券', '数量', '精确总成本 CNY', '显示均价 CNY', '买入日期'].map((label) => <th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead>
             <tbody>{snapshot.holdings.map((row, index) => <tr key={index}><td className="p-2">{row.name}<br />{row.code}.{row.exchange}</td><td className="p-2 tabular-nums">{row.quantity}</td><td className="p-2 tabular-nums">{row.total_cost}</td><td className="p-2 tabular-nums">{displayAverage(row.total_cost, row.quantity)}</td><td className="p-2">{row.acquisition_dates?.length ? row.acquisition_dates.join('、') : row.purchased_on}{row.batch_details_known === false && <p className="text-xs text-muted-foreground">批次数量与成本分配未知</p>}</td></tr>)}</tbody>
           </table></div>}
-          <p className="text-sm text-muted-foreground">均价仅用于显示，按两位小数四舍五入；计算保留精确总成本。期初信息只读，当前数量、现金和后续动作见下方。</p>
+          <p className="text-sm text-muted-foreground">均价仅用于显示，按两位小数四舍五入；计算保留精确总成本。期初信息只读，当前数量、现金和后续动作见上方买卖操作区。</p>
           <p className="text-sm">已有期初值不能在此覆盖；后续更正将单独留痕。</p>
         </section>}
 
-        {snapshot && <><SimulationReports /><SimulationLedger /></>}
+        {snapshot && <SimulationReports />}
 
         {query.isSuccess && !snapshot && <form onSubmit={submit} className="space-y-6">
           <fieldset disabled={mutation.isPending} className="space-y-6">

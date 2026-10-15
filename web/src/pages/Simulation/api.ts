@@ -47,6 +47,7 @@ export interface SuggestionRequest {
 }
 export interface Suggestion extends SuggestionRequest {
   suggestion_id: string; suggestion_version: number; status: 'pending' | 'confirmed' | 'cancelled' | 'expired';
+  replaces_suggestion_id?: string | null;
   fees: Fees; created_at: string; estimated_cash_delta: string; estimated_cash_after: string;
   estimated_fees: { total: string }; reference_status: 'unverified';
 }
@@ -70,7 +71,7 @@ export interface Ledger {
 }
 export interface SimulationEvent {
   event_id: number; event_type: string; cash_delta: string; created_at: string;
-  payload: { suggestion_id?: string; order_id?: string; fill_id?: string; account_version?: number; actor?: string; quote_evidence_id?: string };
+  payload: { suggestion_id?: string; replaces_suggestion_id?: string; order_id?: string; fill_id?: string; account_version?: number; actor?: string; quote_evidence_id?: string };
 }
 export interface EventPage { events: SimulationEvent[]; next_cursor: number | null }
 const base = '/api/v1/users/me/simulation';
@@ -83,6 +84,14 @@ export async function createSuggestion(request: SuggestionRequest): Promise<{ re
 export async function confirmSuggestion(request: { suggestion_id: string; suggestion_version: number; account_version: number; acknowledge_simulation: true }): Promise<{ result: Order }> {
   const { suggestion_id, ...body } = request;
   return (await api.post<{ result: Order }>(`${base}/suggestions/${suggestion_id}/confirm`, body, { timeout: 15000 })).data;
+}
+export interface RevisionRequest {
+  suggestion_id: string; client_request_id: string; suggestion_version: number;
+  account_version: number; quantity: number; limit_price: string;
+}
+export async function reviseSuggestion(request: RevisionRequest): Promise<{ result: Suggestion }> {
+  const { suggestion_id, ...body } = request;
+  return (await api.post<{ result: Suggestion }>(`${base}/suggestions/${suggestion_id}/revise`, body, { timeout: 15000 })).data;
 }
 export async function cancelSuggestion(id: string): Promise<{ result: Suggestion }> {
   return (await api.post<{ result: Suggestion }>(`${base}/suggestions/${id}/cancel`, undefined, { timeout: 15000 })).data;

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { Fees, RecordKind, SuggestionRequest } from './api';
+import type { Fees, RecordKind, Suggestion, SuggestionRequest } from './api';
 import { displayAverage } from './money';
 import { useLedger, useSimulationRecord } from './useLedger';
 
@@ -25,7 +25,7 @@ function FeeNote({ fees }: { fees: Fees }) {
 }
 
 export default function SimulationLedger() {
-  const { query, events, create, confirm, dismiss, cancel } = useLedger();
+  const { query, events, create, confirm, revise, dismiss, cancel } = useLedger();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<{ kind: RecordKind; id: string } | null>(null);
   const record = useSimulationRecord(selectedRecord?.kind, selectedRecord?.id);
@@ -33,10 +33,15 @@ export default function SimulationLedger() {
   const [draftId, setDraftId] = useState(() => crypto.randomUUID());
   const [draft, setDraft] = useState({ code: '', exchange: 'SH' as SuggestionRequest['exchange'], name: '', side: 'buy' as SuggestionRequest['side'], quantity: '', limit_price: '', reason: '', counterargument: '', expiry: '' });
   const [inputError, setInputError] = useState('');
+  const [manualOpen, setManualOpen] = useState(false);
+  const [editQuantity, setEditQuantity] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [revisionId, setRevisionId] = useState(() => crypto.randomUUID());
   const ledger = query.data?.ledger;
   const selected = ledger?.suggestions.find((s) => s.suggestion_id === selectedId);
-  const busy = create.isPending || confirm.isPending || dismiss.isPending || cancel.isPending;
-  const actionError = create.error ?? confirm.error ?? dismiss.error ?? cancel.error;
+  const recoveredRevision = revise.isError && selected?.status === 'cancelled' ? ledger?.suggestions.find((s) => s.client_request_id === revisionId && s.replaces_suggestion_id === selectedId) : undefined;
+  const busy = create.isPending || confirm.isPending || revise.isPending || dismiss.isPending || cancel.isPending;
+  const actionError = create.error ?? confirm.error ?? revise.error ?? dismiss.error ?? cancel.error;
 
   function update(field: keyof typeof draft, value: string) {
     setDraft((previous) => ({ ...previous, [field]: value }));
@@ -58,31 +63,63 @@ export default function SimulationLedger() {
     });
   }
 
+  const needsRecalculation = !!selected && (editQuantity !== String(selected.quantity) || editPrice !== selected.limit_price || selected.account_version !== ledger?.version);
+
   function openConfirmation(id: string) {
-    confirm.reset(); setAcknowledged(false); setSelectedId(id);
+    const suggestion = ledger?.suggestions.find((s) => s.suggestion_id === id);
+    if (!suggestion) return;
+    confirm.reset(); revise.reset(); setInputError(''); setAcknowledged(false); setSelectedId(id);
+    setEditQuantity(String(suggestion.quantity)); setEditPrice(suggestion.limit_price); setRevisionId(crypto.randomUUID());
+  }
+
+  function recalculate() {
+    if (!selected || !ledger || busy) return;
+    if (!/^[1-9][0-9]*$/.test(editQuantity) || Number(editQuantity) > 1_000_000) {
+      setInputError('数量须为正整数且不超过 100 万股。'); return;
+    }
+    if (!/^[0-9]+(\.[0-9]{1,2})?$/.test(editPrice) || Number(editPrice) <= 0) {
+      setInputError('请填写大于零且最多两位小数的限价。'); return;
+    }
+    setInputError(''); setAcknowledged(false);
+    revise.mutate({ suggestion_id: selected.suggestion_id, suggestion_version: selected.suggestion_version,
+      account_version: ledger.version, client_request_id: revisionId, quantity: Number(editQuantity), limit_price: editPrice }, {
+      onSuccess: ({ result }) => { setSelectedId(result.suggestion_id); setEditQuantity(String(result.quantity)); setEditPrice(result.limit_price); setRevisionId(crypto.randomUUID()); confirm.reset(); },
+    });
+  }
+
+  function suggestionCard(s: Suggestion) {
+    return <article className="rounded-lg border border-border bg-card p-5 space-y-3" key={s.suggestion_id}>
+      <h3 className="font-semibold">{sideName(s.side)} {s.name} · {s.code}.{s.exchange} · {statusNames[s.status]}</h3>
+      <p className="text-sm tabular-nums">建议数量 {s.quantity} 股 · {s.side === 'buy' ? '价格上限' : '价格下限'} {s.limit_price} CNY · 有效至 {timestamp(s.expires_at)}（北京时间）</p>
+      <p className="text-sm whitespace-pre-wrap break-words">理由：{s.reason}</p><p className="text-sm whitespace-pre-wrap break-words">反证：{s.counterargument}</p>
+      <p className="text-sm tabular-nums">按限价估算：费用 {s.estimated_fees.total} CNY，现金变化 {s.estimated_cash_delta} CNY，现金余额 {s.estimated_cash_after} CNY；数量变化 {s.side === 'buy' ? '+' : '−'}{s.quantity} 股。</p>
+      <p className="text-xs text-muted-foreground">建议版本 {s.suggestion_version} · 账本版本 {s.account_version} · 参考行情待核实 · {s.fees.version}</p>
+      {s.replaces_suggestion_id && <Button variant="link" size="sm" onClick={() => setSelectedRecord({ kind: 'suggestions', id: s.replaces_suggestion_id! })}>查看修改前建议</Button>}
+      {s.status === 'pending' && <div className="flex flex-wrap gap-3">
+        <Button disabled={busy || s.account_version !== ledger?.version} onClick={() => openConfirmation(s.suggestion_id)}>核对并确认模拟{sideName(s.side)}</Button>
+        <Button variant="outline" disabled={busy} onClick={() => openConfirmation(s.suggestion_id)}>修改数量 / 限价</Button>
+        <Button variant="outline" disabled={busy} onClick={() => dismiss.mutate(s.suggestion_id)}>取消建议</Button>
+        {s.account_version !== ledger?.version && <p className="text-sm text-muted-foreground">账本或预留已变化，请修改并重新计算后确认。</p>}
+      </div>}
+    </article>;
   }
 
   return <div className="space-y-7">
     {query.isPending && <p role="status">正在读取当前模拟账本…</p>}
     {query.isError && <div role="alert"><p>{message(query.error)}</p><Button onClick={() => void query.refetch()}>重试读取当前账本</Button></div>}
     {ledger && <>
-      <section className="rounded-lg border border-border bg-card p-6 space-y-5" aria-label="当前模拟账本">
-        <div className="flex flex-wrap justify-between gap-3"><h2 className="text-lg font-semibold">当前模拟账本 · 版本 {ledger.version}</h2><Button variant="outline" size="sm" onClick={() => void query.refetch()} disabled={query.isFetching}>刷新账本</Button></div>
-        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-          {([['当前现金', ledger.cash], ['可用现金', ledger.available_cash], ['订单预留', ledger.reserved_cash], ['起算后已实现盈亏', ledger.realized_pnl]] as const).map(([label, value]) =>
-            <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="tabular-nums break-all">{value} CNY</dd></div>)}
-        </dl>
-        <p className="text-sm text-muted-foreground">行情待核实，暂不计算市值、浮动收益和总资产。{ledger.sellable_basis}。</p>
-        {ledger.positions.length ? <div className="overflow-x-auto"><table className="w-full text-sm text-left">
-          <caption className="sr-only">当前数量、可卖余额与精确成本</caption>
-          <thead><tr>{['证券', '持有数量', '可卖余额', '总成本 CNY', '显示均价 CNY'].map((label) => <th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead>
-          <tbody>{ledger.positions.map((p) => <tr key={`${p.code}.${p.exchange}`}><td className="p-2">{p.name}<br />{p.code}.{p.exchange}</td><td className="p-2 tabular-nums">{p.quantity}</td><td className="p-2 tabular-nums">{p.available_quantity}</td><td className="p-2 tabular-nums">{p.total_cost}</td><td className="p-2 tabular-nums">{displayAverage(p.total_cost, p.quantity)}</td></tr>)}</tbody>
-        </table></div> : <p className="text-sm">当前无持仓。</p>}
-        <FeeNote fees={ledger.fees} />
+      <section id="simulation-trading" className="rounded-lg border border-border bg-card p-6 space-y-4" aria-label="买卖操作区">
+        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">买卖操作区</h2><span className="text-sm">{ledger.suggestions.filter((s) => s.status === 'pending').length} 笔待确认</span></div>
+        <p className="text-sm text-muted-foreground">建议 → 核对或修改数量 / 限价 → 重新计算 → 手动确认。确认后才预留资源；成交仍须有效行情。</p>
+        <div className="flex flex-wrap gap-3">
+          <Button disabled={busy} aria-expanded={manualOpen && draft.side === 'buy'} aria-controls="simulation-manual-entry" onClick={() => { update('side', 'buy'); setManualOpen(true); }}>记录模拟买入</Button>
+          <Button variant="outline" disabled={busy} aria-expanded={manualOpen && draft.side === 'sell'} aria-controls="simulation-manual-entry" onClick={() => { update('side', 'sell'); setManualOpen(true); }}>记录模拟卖出</Button>
+          <a className="text-sm underline self-center" href="#simulation-orders">查看订单与成交</a>
+        </div>
+        <p className="text-sm text-muted-foreground">AI 自动分析转建议卡尚未接通，目前可手动录入研究建议。上方按钮不会直接记成交；持仓检查报告也不会自动产生买卖建议。</p>
       </section>
-
-      <section className="rounded-lg border border-border bg-card p-6 space-y-4" aria-label="记录手动建议">
-        <h2 className="text-lg font-semibold">记录手动研究建议</h2>
+      {manualOpen && <section id="simulation-manual-entry" className="rounded-lg border border-border bg-card p-6 space-y-4" aria-label="记录手动建议">
+        <div className="flex justify-between gap-3"><h2 className="text-lg font-semibold">记录模拟{sideName(draft.side)}建议</h2><Button variant="ghost" disabled={busy} onClick={() => setManualOpen(false)}>关闭录入</Button></div>
         <p className="text-sm text-muted-foreground">保存卡片后仍需逐笔确认。限价由你填写，参考行情待核实；当前仅覆盖沪深主板普通 A 股，AI 日报与通知后续接入。</p>
         <form onSubmit={submit} className="space-y-4">
           <fieldset disabled={busy} className="space-y-4">
@@ -102,27 +139,32 @@ export default function SimulationLedger() {
           </fieldset>
           {inputError && <p role="alert">{inputError}</p>}
         </form>
-      </section>
-
+      </section>}
       <section className="space-y-4" aria-label="模拟建议">
-        <h2 className="text-lg font-semibold">建议卡片</h2>
-        {!ledger.suggestions.length && <p className="text-sm text-muted-foreground">暂无建议。保存建议不会预留资金或改变仓位。</p>}
-        {ledger.suggestions.map((s) => <article className="rounded-lg border border-border bg-card p-5 space-y-3" key={s.suggestion_id}>
-          <h3 className="font-semibold">{sideName(s.side)} {s.name} · {s.code}.{s.exchange} · {statusNames[s.status]}</h3>
-          <p className="text-sm tabular-nums">{s.quantity} 股 · {s.side === 'buy' ? '价格上限' : '价格下限'} {s.limit_price} CNY · 有效至 {timestamp(s.expires_at)}（北京时间）</p>
-          <p className="text-sm whitespace-pre-wrap break-words">理由：{s.reason}</p><p className="text-sm whitespace-pre-wrap break-words">反证：{s.counterargument}</p>
-          <p className="text-sm tabular-nums">按限价估算：费用 {s.estimated_fees.total} CNY，现金变化 {s.estimated_cash_delta} CNY，现金余额 {s.estimated_cash_after} CNY；数量变化 {s.side === 'buy' ? '+' : '−'}{s.quantity} 股。</p>
-          <p className="text-xs text-muted-foreground">建议版本 {s.suggestion_version} · 账本版本 {s.account_version} · 参考行情待核实 · {s.fees.version}</p>
-          {s.status === 'pending' && <div className="flex flex-wrap gap-3">
-            <Button disabled={busy || s.account_version !== ledger.version} onClick={() => openConfirmation(s.suggestion_id)}>核对并确认模拟{sideName(s.side)}</Button>
-            <Button variant="outline" disabled={busy} onClick={() => dismiss.mutate(s.suggestion_id)}>取消建议</Button>
-            {s.account_version !== ledger.version && <p className="text-sm text-muted-foreground">账本或预留已变化，请重新生成建议。</p>}
-          </div>}
-        </article>)}
-        <p className="text-xs text-muted-foreground">展示全部待处理建议和订单，以及各最近 {ledger.history_limit} 条终态记录；成交展示最近 {ledger.history_limit} 条，操作审计可向前翻页。</p>
+        <h2 className="text-lg font-semibold">待确认建议</h2>
+        {!ledger.suggestions.some((s) => s.status === 'pending') && <p className="text-sm text-muted-foreground">暂无待确认建议。可点击“记录模拟买入 / 卖出”录入；保存后仍需逐笔确认。</p>}
+        {ledger.suggestions.filter((s) => s.status === 'pending').map(suggestionCard)}
+        <details className="space-y-3"><summary className="cursor-pointer text-sm">历史建议（{ledger.suggestions.filter((s) => s.status !== 'pending').length}）</summary>
+          {ledger.suggestions.filter((s) => s.status !== 'pending').map(suggestionCard)}
+        </details>
       </section>
 
-      <section className="space-y-4" aria-label="模拟订单">
+      <section className="rounded-lg border border-border bg-card p-6 space-y-5" aria-label="当前模拟账本">
+        <div className="flex flex-wrap justify-between gap-3"><h2 className="text-lg font-semibold">当前模拟账本 · 版本 {ledger.version}</h2><Button variant="outline" size="sm" onClick={() => void query.refetch()} disabled={query.isFetching}>刷新账本</Button></div>
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          {([['当前现金', ledger.cash], ['可用现金', ledger.available_cash], ['订单预留', ledger.reserved_cash], ['起算后已实现盈亏', ledger.realized_pnl]] as const).map(([label, value]) =>
+            <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="tabular-nums break-all">{value} CNY</dd></div>)}
+        </dl>
+        <p className="text-sm text-muted-foreground">行情待核实，暂不计算市值、浮动收益和总资产。{ledger.sellable_basis}。</p>
+        {ledger.positions.length ? <div className="overflow-x-auto"><table className="w-full text-sm text-left">
+          <caption className="sr-only">当前数量、可卖余额与精确成本</caption>
+          <thead><tr>{['证券', '持有数量', '可卖余额', '总成本 CNY', '显示均价 CNY'].map((label) => <th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead>
+          <tbody>{ledger.positions.map((p) => <tr key={`${p.code}.${p.exchange}`}><td className="p-2">{p.name}<br />{p.code}.{p.exchange}</td><td className="p-2 tabular-nums">{p.quantity}</td><td className="p-2 tabular-nums">{p.available_quantity}</td><td className="p-2 tabular-nums">{p.total_cost}</td><td className="p-2 tabular-nums">{displayAverage(p.total_cost, p.quantity)}</td></tr>)}</tbody>
+        </table></div> : <p className="text-sm">当前无持仓。</p>}
+        <FeeNote fees={ledger.fees} />
+      </section>
+
+      <section className="space-y-4" aria-label="模拟订单" id="simulation-orders">
         <h2 className="text-lg font-semibold">模拟订单</h2>
         {!ledger.orders.length && <p className="text-sm text-muted-foreground">暂无订单。只有你逐笔确认后才会建立订单。</p>}
         {ledger.orders.map((o) => <article className="rounded-lg border border-border bg-card p-5 space-y-3" key={o.order_id}>
@@ -149,7 +191,7 @@ export default function SimulationLedger() {
         {events.isPending && <p role="status">正在读取操作审计…</p>}
         {events.isError && <div role="alert">{message(events.error)}<Button variant="outline" onClick={() => void events.refetch()}>重试读取审计</Button></div>}
         {events.data?.pages.flatMap((p) => p.events).map((e) => <div className="border-b border-border pb-3 text-sm" key={e.event_id}>
-          <p>{timestamp(e.created_at)} · {statusNames[e.event_type] ?? e.event_type} · 现金变化 {e.cash_delta} CNY</p>
+          <p>{timestamp(e.created_at)} · {e.payload.replaces_suggestion_id ? '修改建议并重新计算' : (statusNames[e.event_type] ?? e.event_type)} · 现金变化 {e.cash_delta} CNY</p>
           <p className="text-xs text-muted-foreground break-all">审计 #{e.event_id} · {e.payload.order_id ? `订单 ${e.payload.order_id}` : `建议 ${e.payload.suggestion_id ?? ''}`}{e.payload.account_version && ` · 账本版本 ${e.payload.account_version}`}</p>
           <div className="flex flex-wrap gap-2 mt-2">
             {e.payload.suggestion_id && <Button variant="outline" size="sm" onClick={() => setSelectedRecord({ kind: 'suggestions', id: e.payload.suggestion_id! })}>查看建议</Button>}
@@ -161,20 +203,30 @@ export default function SimulationLedger() {
       </section>
     </>}
     {actionError && <p role="alert">{message(actionError)}</p>}
-    <Dialog open={!!selectedId && !!selected} onOpenChange={(open) => { if (!open && !confirm.isPending) setSelectedId(null); }}>
+    <Dialog open={!!selectedId && !!selected} onOpenChange={(open) => { if (!open && !confirm.isPending && !revise.isPending) setSelectedId(null); }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle>确认本笔模拟{selected && sideName(selected.side)}</DialogTitle><DialogDescription>确认只建立模拟订单并预留资源；之后的有效行情满足条件才可模拟成交。</DialogDescription></DialogHeader>
         {selected && <div className="space-y-4 text-sm">
           <p className="font-semibold">{selected.name} · {selected.code}.{selected.exchange} · {selected.quantity} 股 · {selected.side === 'buy' ? '价格上限' : '价格下限'} {selected.limit_price} CNY</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label>本次数量（股）<Input aria-label="本次数量" inputMode="numeric" value={editQuantity} disabled={busy || selected.status !== 'pending'} onChange={(e) => { setEditQuantity(e.target.value); setAcknowledged(false); setRevisionId(crypto.randomUUID()); setInputError(''); }} /></label>
+            <label>本次{selected.side === 'buy' ? '买入上限' : '卖出下限'}（CNY）<Input aria-label="本次限价" inputMode="decimal" value={editPrice} disabled={busy || selected.status !== 'pending'} onChange={(e) => { setEditPrice(e.target.value); setAcknowledged(false); setRevisionId(crypto.randomUUID()); setInputError(''); }} /></label>
+          </div>
+          {needsRecalculation && <p role="status">数量、限价或账本已变化，请先重新计算并保存，再核对费用和确认。原建议保留在历史记录。</p>}
+          <Button variant="outline" disabled={busy || !needsRecalculation || selected.status !== 'pending'} onClick={recalculate}>{revise.isPending ? '正在重新计算…' : '重新计算并保存建议'}</Button>
+          {inputError && <p role="alert">{inputError}</p>}
+          {revise.isError && <p role="alert">{message(revise.error)}</p>}
+          {recoveredRevision && <div role="status"><p>重新计算已保存，可打开新版本继续核对；仍须手动确认。</p><Button variant="outline" disabled={busy} onClick={() => openConfirmation(recoveredRevision.suggestion_id)}>查看已保存的新建议</Button></div>}
+          {selected.status !== 'pending' && !recoveredRevision && <p role="alert">此建议已结束，请返回查看最新待确认卡片。</p>}
           <p>有效至 {timestamp(selected.expires_at)}（北京时间）；建议版本 {selected.suggestion_version}，账本版本 {selected.account_version}。</p>
           <FeeNote fees={selected.fees} />
           <p>限价估算费用 {selected.estimated_fees.total} CNY，现金变化 {selected.estimated_cash_delta} CNY，数量变化 {selected.side === 'buy' ? '+' : '−'}{selected.quantity} 股。</p>
-          <label className="flex items-start gap-2"><input type="checkbox" checked={acknowledged} disabled={confirm.isPending} onChange={(e) => setAcknowledged(e.target.checked)} />我已核对本笔证券、方向、数量、限价与费用，确认仅执行模拟交易。</label>
-          {ledger && selected.account_version !== ledger.version && <p role="alert">账本或预留已变化，请关闭并重新生成建议。</p>}
+          <label className="flex items-start gap-2"><input type="checkbox" checked={acknowledged} disabled={busy || needsRecalculation || selected.status !== 'pending'} onChange={(e) => setAcknowledged(e.target.checked)} />我已核对本笔证券、方向、数量、限价与费用，确认仅执行模拟交易。</label>
+          {ledger && selected.account_version !== ledger.version && <p role="alert">账本或预留已变化，请点击“重新计算并保存建议”后再次核对。</p>}
           {confirm.isError && <p role="alert">{message(confirm.error)}</p>}
           <DialogFooter>
-            <Button variant="outline" disabled={confirm.isPending} onClick={() => setSelectedId(null)}>返回核对</Button>
-            <Button disabled={!acknowledged || busy || selected.status !== 'pending' || selected.account_version !== ledger?.version} onClick={() => {
+            <Button variant="outline" disabled={busy} onClick={() => setSelectedId(null)}>返回核对</Button>
+            <Button disabled={!acknowledged || needsRecalculation || busy || selected.status !== 'pending' || selected.account_version !== ledger?.version} onClick={() => {
               if (confirm.isPending) return;
               confirm.mutate({ suggestion_id: selected.suggestion_id, suggestion_version: selected.suggestion_version, account_version: selected.account_version, acknowledge_simulation: true }, { onSuccess: () => setSelectedId(null) });
             }}>{confirm.isPending ? '正在确认…' : `确认模拟${sideName(selected.side)}`}</Button>
