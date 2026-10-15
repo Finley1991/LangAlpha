@@ -68,7 +68,7 @@ describe('explicit simulation confirmation', () => {
 
   it('pending orders wait for verified quotes and can be cancelled without another confirmation', () => {
     state.query.data.ledger.orders = [{ ...card, order_id: 'order-id', status: 'pending', confirmed_at: '2026-10-14T02:01:00Z', reserved_cash: '105.00', execution_status: 'awaiting_verified_quote' }];
-    render(<SimulationLedger />);
+    render(<SimulationLedger section="orders" />);
     expect(screen.getByText(/当前不会成交/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '取消模拟订单' }));
     expect(state.cancel.mutate).toHaveBeenCalledWith('order-id');
@@ -88,7 +88,7 @@ describe('explicit simulation confirmation', () => {
     state.events.hasNextPage = true;
     state.events.data.pages[0] = { events: [{ event_id: 1, event_type: 'suggested', cash_delta: '0.00', created_at: card.created_at, payload: { suggestion_id: 'older-card' } }], next_cursor: 1 };
     useRecordMock.mockImplementation((_kind: string, id: string) => id ? { data: { result: { ...card, suggestion_id: id } } } : {});
-    render(<SimulationLedger />);
+    render(<SimulationLedger section="audit" />);
     fireEvent.click(screen.getByRole('button', { name: '读取更早审计' }));
     expect(state.events.fetchNextPage).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '查看建议' }));
@@ -101,6 +101,7 @@ describe('explicit simulation confirmation', () => {
     render(<SimulationLedger />);
     expect(screen.getByRole('region', { name: '买卖操作区' })).toHaveTextContent('1 笔待确认');
     expect(screen.getByText(/AI 自动分析转建议卡尚未接通/)).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '历史建议' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: '记录手动建议' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '记录模拟卖出' }));
     expect(screen.getByLabelText('建议方向')).toHaveValue('sell');
@@ -183,6 +184,17 @@ describe('explicit simulation confirmation', () => {
     fireEvent.click(within(dialog).getByRole('checkbox'));
     fireEvent.click(within(dialog).getByRole('button', { name: '确认模拟买入' }));
     expect(state.confirm.mutate).toHaveBeenCalledWith(expect.objectContaining({ suggestion_id: 'revised-card', suggestion_version: 2 }), expect.any(Object));
+  });
+
+  it('does not let a confirmation portal cover a different tab after browser navigation', () => {
+    const { rerender } = render(<SimulationLedger />);
+    fireEvent.click(screen.getByRole('button', { name: '修改数量 / 限价' }));
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('本次数量', { exact: true }), { target: { value: '300' } });
+    rerender(<SimulationLedger section="holdings" />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    rerender(<SimulationLedger section="trading" />);
+    expect(within(screen.getByRole('dialog')).getByLabelText('本次数量', { exact: true })).toHaveValue('300');
+    expect(state.confirm.mutate).not.toHaveBeenCalled();
   });
 
 });

@@ -57,7 +57,7 @@ function ReportBody({ data }: { data: ReportDetail }) {
   </div>;
 }
 
-export default function SimulationReports() {
+export default function SimulationReports({ active = true }: { active?: boolean }) {
   const locale = useLocale();
   const [selectedId, setSelectedId] = useState<string>();
   const [inputError, setInputError] = useState('');
@@ -95,7 +95,7 @@ export default function SimulationReports() {
       </li>)}
     </ul>
     {history.hasNextPage && !history.isError && <Button variant="outline" disabled={history.isFetchingNextPage} onClick={() => void history.fetchNextPage()}>{history.isFetchingNextPage ? '正在读取…' : '读取更早报告'}</Button>}
-    <Dialog open={!!selectedId} onOpenChange={(open) => { if (!open) setSelectedId(undefined); }}>
+    <Dialog open={active && !!selectedId} onOpenChange={(open) => { if (!open) setSelectedId(undefined); }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader><DialogTitle>{detail.data?.report.title ?? '持仓检查日报'}</DialogTitle><DialogDescription>仅模拟盘。这里展示生成时的冻结事实，缺失数据保留待核实。</DialogDescription></DialogHeader>
         {detail.isPending && <p role="status">正在读取报告…</p>}

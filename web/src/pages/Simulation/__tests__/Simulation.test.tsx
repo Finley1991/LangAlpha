@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import Simulation from '../Simulation';
@@ -18,6 +18,7 @@ describe('opening snapshot', () => {
       mutation: { isPending: false },
     });
     render(<MemoryRouter><Simulation /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('tab', { name: '期初' }));
     expect(screen.getByText('2026-10-10、2026-10-12')).toBeInTheDocument();
     expect(screen.getByText('批次数量与成本分配未知')).toBeInTheDocument();
     expect(screen.getByText('1234.5678')).toBeInTheDocument();

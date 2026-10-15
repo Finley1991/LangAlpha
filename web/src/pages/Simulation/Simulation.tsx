@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { ApiError } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,8 @@ import type { OpeningHolding } from './api';
 import { displayAverage } from './money';
 import SimulationLedger from './SimulationLedger';
 import SimulationReports from './SimulationReports';
+import { workspaceTabs, sectionFromHash, sectionGroup, sectionHash, type SimulationSection } from './workspace';
+import { WorkspaceTabs } from './WorkspaceTabs';
 
 interface DraftHolding { id: string; code: string; exchange: OpeningHolding['exchange']; name: string; quantity: string; total_cost: string; purchased_on: string }
 const emptyHolding = (): DraftHolding => ({ id: crypto.randomUUID(), code: '', exchange: 'SH', name: '', quantity: '', total_cost: '', purchased_on: '' });
@@ -27,6 +29,15 @@ export default function Simulation() {
   const [confirmed, setConfirmed] = useState(false);
   const [inputError, setInputError] = useState('');
   const snapshot = query.data?.snapshot;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const section = sectionFromHash(location.hash);
+  const group = sectionGroup(section);
+  const scrollRoot = useRef<HTMLElement>(null);
+  useEffect(() => { scrollRoot.current?.scrollTo?.({ top: 0 }); }, [section]);
+  function chooseSection(next: SimulationSection) {
+    void navigate({ pathname: location.pathname, search: location.search, hash: sectionHash(next) }, { preventScrollReset: true });
+  }
 
   function updateRow(id: string, field: keyof Omit<DraftHolding, 'id'>, value: string) {
     setRows((previous) => previous.map((row) => row.id === id ? { ...row, [field]: value } : row));
@@ -48,21 +59,21 @@ export default function Simulation() {
   }
 
   return (
-    <main className="h-full overflow-y-auto bg-page text-foreground px-5 py-10">
-      <div className="mx-auto max-w-4xl space-y-7">
-        <header className="space-y-3">
-          <p className="text-sm text-muted-foreground">思迈挚融 · 模拟盘</p>
-          <h1 className="text-2xl font-semibold">模拟投资账本</h1>
-          <p className="text-sm text-muted-foreground">核对买卖建议、修改数量并逐笔确认。所有记录仅用于模拟盘。</p>
-          <nav className="flex flex-wrap gap-5 text-sm underline" aria-label="产品入口">{snapshot && <><a href="#simulation-trading">买卖操作区</a><a href="#simulation-reports">持仓检查</a><a href="#simulation-opening">期初快照</a></>}<Link to="/dashboard">研究工作台</Link><Link to="/setup/method">配置模型</Link></nav>
+    <main ref={scrollRoot} className="h-full overflow-y-auto bg-page text-foreground px-4 sm:px-6 py-6 sm:py-9">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2"><p className="text-xs text-muted-foreground">思迈挚融 · 模拟盘</p><h1 className="text-2xl font-semibold">模拟投资账本</h1></div>
+          <nav className="flex gap-4 text-sm text-muted-foreground" aria-label="产品入口"><Link className="hover:text-foreground" to="/dashboard">研究工作台</Link><Link className="hover:text-foreground" to="/setup/method">配置模型</Link></nav>
         </header>
+        {snapshot && <div className="sticky top-0 z-10 bg-page pt-2"><WorkspaceTabs prefix="simulation" label="模拟盘工作区" tabs={workspaceTabs} value={group}
+          onChange={(next) => chooseSection(next === 'records' ? 'orders' : next)} /></div>}
 
         {query.isPending && <p role="status">正在读取账本…</p>}
         {query.isError && <div role="alert"><p>{errorMessage(query.error)}</p><Button className="mt-3" onClick={() => void query.refetch()}>重试读取</Button></div>}
 
-        {snapshot && <SimulationLedger />}
+        {snapshot && <SimulationLedger section={section} onSectionChange={chooseSection} />}
 
-        {snapshot && <section id="simulation-opening" className="rounded-lg border border-border bg-card p-6 space-y-5" aria-label="期初快照">
+        {snapshot && <div role="tabpanel" tabIndex={0} id="simulation-panel-opening" aria-labelledby="simulation-tab-opening" hidden={section !== 'opening'} className="focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"><section id="simulation-opening" className="rounded-lg border border-border bg-card p-6 space-y-5" aria-label="期初快照">
           <h2 className="text-lg font-semibold">期初快照已保存 · 版本 {snapshot.version}</h2>
           <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
             <div><dt className="text-muted-foreground">账本起算日期</dt><dd>{snapshot.opening_date}</dd></div>
@@ -74,11 +85,11 @@ export default function Simulation() {
             <thead><tr>{['证券', '数量', '精确总成本 CNY', '显示均价 CNY', '买入日期'].map((label) => <th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead>
             <tbody>{snapshot.holdings.map((row, index) => <tr key={index}><td className="p-2">{row.name}<br />{row.code}.{row.exchange}</td><td className="p-2 tabular-nums">{row.quantity}</td><td className="p-2 tabular-nums">{row.total_cost}</td><td className="p-2 tabular-nums">{displayAverage(row.total_cost, row.quantity)}</td><td className="p-2">{row.acquisition_dates?.length ? row.acquisition_dates.join('、') : row.purchased_on}{row.batch_details_known === false && <p className="text-xs text-muted-foreground">批次数量与成本分配未知</p>}</td></tr>)}</tbody>
           </table></div>}
-          <p className="text-sm text-muted-foreground">均价仅用于显示，按两位小数四舍五入；计算保留精确总成本。期初信息只读，当前数量、现金和后续动作见上方买卖操作区。</p>
+          <p className="text-sm text-muted-foreground">均价仅用于显示，按两位小数四舍五入；计算保留精确总成本。期初信息只读，当前数量与现金见“持仓”，后续操作见“买卖”。</p>
           <p className="text-sm">已有期初值不能在此覆盖；后续更正将单独留痕。</p>
-        </section>}
+        </section></div>}
 
-        {snapshot && <SimulationReports />}
+        {snapshot && <div role="tabpanel" tabIndex={0} id="simulation-panel-reports" aria-labelledby="simulation-tab-reports" hidden={section !== 'reports'} className="focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"><SimulationReports active={section === 'reports'} /></div>}
 
         {query.isSuccess && !snapshot && <form onSubmit={submit} className="space-y-6">
           <fieldset disabled={mutation.isPending} className="space-y-6">

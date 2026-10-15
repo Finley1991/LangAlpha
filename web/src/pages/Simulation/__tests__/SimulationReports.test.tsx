@@ -126,4 +126,26 @@ describe('frozen checking reports', () => {
     expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent('超过有效期');
     expect(screen.getByText(/失效时间（北京时间）/)).toBeInTheDocument();
   });
+  it('does not open a portal when generation finishes in another tab', () => {
+    const { rerender } = render(<SimulationReports active />);
+    fireEvent.click(screen.getByRole('button', { name: '生成当前持仓检查' }));
+    const onSuccess = state.generate.mutate.mock.calls[0][1].onSuccess;
+    rerender(<SimulationReports active={false} />);
+    act(() => onSuccess(report));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    rerender(<SimulationReports active />);
+    expect(screen.getByRole('dialog')).toBeVisible();
+    expect(useReportsMock).toHaveBeenLastCalledWith('older-report');
+  });
+
+  it('hides an open report when navigation leaves its tab and restores the selection on return', () => {
+    const { rerender } = render(<SimulationReports active />);
+    fireEvent.click(screen.getByRole('button', { name: '查看报告 1' }));
+    expect(screen.getByRole('dialog')).toBeVisible();
+    rerender(<SimulationReports active={false} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    rerender(<SimulationReports active />);
+    expect(screen.getByRole('dialog')).toBeVisible();
+  });
+
 });
