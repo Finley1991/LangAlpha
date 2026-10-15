@@ -48,7 +48,7 @@ export default function Simulation() {
   }
 
   return (
-    <main className="min-h-screen bg-page text-foreground px-5 py-10">
+    <main className="h-full overflow-y-auto bg-page text-foreground px-5 py-10">
       <div className="mx-auto max-w-4xl space-y-7">
         <header className="space-y-3">
           <p className="text-sm text-muted-foreground">思迈挚融 · 模拟盘</p>
