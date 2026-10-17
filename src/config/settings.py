@@ -41,7 +41,9 @@ def background_dispatch_requires_token() -> bool:
     Internal background dispatch is rejected with 403 in that state, so callers
     must not fire one. In oss mode the self-dispatch is trusted without a token.
     """
-    return HOST_MODE != "oss" and not os.environ.get("INTERNAL_SERVICE_TOKEN", "").strip()
+    return (
+        HOST_MODE != "oss" and not os.environ.get("INTERNAL_SERVICE_TOKEN", "").strip()
+    )
 
 
 # =============================================================================
@@ -296,11 +298,15 @@ def _env_pool_size(env_var: str, default: int, ceiling: int = 500) -> int:
     try:
         parsed = int(raw)
     except ValueError:
-        logger.warning("%s=%r is not an integer; using default=%d", env_var, raw, default)
+        logger.warning(
+            "%s=%r is not an integer; using default=%d", env_var, raw, default
+        )
         return default
     if 1 <= parsed <= ceiling:
         return parsed
-    logger.warning("%s=%d outside [1, %d]; using default=%d", env_var, parsed, ceiling, default)
+    logger.warning(
+        "%s=%d outside [1, %d]; using default=%d", env_var, parsed, ceiling, default
+    )
     return default
 
 
@@ -443,7 +449,9 @@ def is_intermediate_storage_enabled() -> bool:
 
 
 def get_max_stored_messages_per_agent() -> int:
-    return get_infrastructure_config().background_execution.max_stored_messages_per_agent
+    return (
+        get_infrastructure_config().background_execution.max_stored_messages_per_agent
+    )
 
 
 def get_subagent_collector_timeout() -> float:
@@ -465,12 +473,16 @@ def get_subagent_task_max_wait() -> int:
 
 def get_in_memory_event_tail_max_events() -> int:
     """Max captured-event records held in the per-subagent in-memory hot tail."""
-    return get_infrastructure_config().background_execution.in_memory_event_tail_max_events
+    return (
+        get_infrastructure_config().background_execution.in_memory_event_tail_max_events
+    )
 
 
 def is_subagent_event_redis_spill_enabled() -> bool:
     """Kill-switch for the per-event Redis spill of subagent captured events."""
-    return get_infrastructure_config().background_execution.spill_subagent_events_to_redis
+    return (
+        get_infrastructure_config().background_execution.spill_subagent_events_to_redis
+    )
 
 
 def get_sse_drain_timeout() -> float:
@@ -539,9 +551,7 @@ def get_nested_config(
     return value
 
 
-def get_config(
-    key: str, default: Any = None, config_path: Optional[Any] = None
-) -> Any:
+def get_config(key: str, default: Any = None, config_path: Optional[Any] = None) -> Any:
     """Top-level config lookup; kept for backward compatibility."""
     return get_nested_config(key, default)
 
@@ -609,3 +619,26 @@ def get_langsmith_metadata(
         metadata["platform"] = platform
 
     return metadata
+
+
+def get_simulation_closing_token() -> str | None:
+    """Opt-in local research; never load a credential file from a request."""
+    if os.environ.get("SIMULATION_CLOSING_ENABLED") != "1":
+        return None
+    token = os.environ.get("TUSHARE_TOKEN", "").strip()
+    return token or None
+
+
+def is_simulation_research_enabled() -> bool:
+    """Sina research can disclose local holdings symbols, so it is opt-in."""
+    return os.environ.get("SIMULATION_RESEARCH_ENABLED") == "1"
+
+
+def is_simulation_realtime_quotes_enabled() -> bool:
+    """Sina quote snapshots can disclose local holdings symbols, so opt in."""
+    return os.environ.get("SIMULATION_REALTIME_QUOTES_ENABLED") == "1"
+
+
+def is_simulation_news_enabled() -> bool:
+    """Per-position news queries disclose local holdings symbols, so opt in."""
+    return os.environ.get("SIMULATION_NEWS_ENABLED") == "1"

@@ -127,13 +127,13 @@ async def events(
     )
 
 
-@router.post("/reports", response_model=ReportDetail)
+@router.post("/reports", response_model=ReportDetail, response_model_exclude_unset=True)
 @handle_api_exceptions("generate simulation report", logger)
 async def create_report(request: ReportRequest, user_id: CurrentUserId):
     return await financial_action(reports.generate(user_id, request))
 
 
-@router.get("/reports", response_model=ReportPage)
+@router.get("/reports", response_model=ReportPage, response_model_exclude_unset=True)
 @handle_api_exceptions("list simulation reports", logger)
 async def report_list(
     user_id: CurrentUserId,
@@ -143,7 +143,11 @@ async def report_list(
     return await financial_action(reports.list_reports(user_id, before, limit))
 
 
-@router.get("/reports/{report_id}", response_model=ReportDetail)
+@router.get(
+    "/reports/{report_id}",
+    response_model=ReportDetail,
+    response_model_exclude_unset=True,
+)
 @handle_api_exceptions("read simulation report", logger)
 async def report_detail(report_id: UUID, user_id: CurrentUserId):
     return await financial_action(reports.get_report(user_id, report_id))

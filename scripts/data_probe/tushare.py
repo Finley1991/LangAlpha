@@ -15,83 +15,16 @@ import httpx
 from dotenv import dotenv_values
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
-ENDPOINT = "https://api.tushare.pro"
+from src.data_client.tushare import (  # noqa: E402
+    ENDPOINT,
+    FIELDS,
+    MAX_BYTES as MAX_BYTES,
+    decode_table as decode_table,
+    TushareError as ProbeError,
+    request_table,
+)
+
 SAMPLE = "600000.SH"
-MAX_BYTES = 262_144
-FIELDS = {
-    "stock_basic": "ts_code,symbol,name,market,exchange,curr_type,list_status,list_date",
-    "trade_cal": "exchange,cal_date,is_open,pretrade_date",
-    "daily": "ts_code,trade_date,close",
-    "stk_limit": "ts_code,trade_date,up_limit,down_limit",
-    "suspend_d": "ts_code,trade_date,suspend_type,suspend_timing",
-    "rt_k": "ts_code,close,trade_time",
-}
-
-
-class ProbeError(Exception):
-    def __init__(self, status: str, code: int | None = None):
-        super().__init__(status)
-        self.status = status
-        self.code = code
-
-
-def decode_table(raw: bytes, fields: str) -> list[dict]:
-    try:
-        payload = json.loads(raw, parse_float=Decimal)
-        if not isinstance(payload, dict) or type(payload.get("code")) is not int:
-            raise ValueError
-        code = payload["code"]
-        if code != 0:
-            message = payload.get("msg")
-            permission_denied = code == 2002 or (
-                code == 40203 and isinstance(message, str) and "权限" in message
-            )
-            raise ProbeError(
-                "permission_denied" if permission_denied else "provider_error", code
-            )
-        data = payload["data"]
-        names, rows = data["fields"], data["items"]
-        if (
-            not isinstance(names, list)
-            or not all(isinstance(name, str) for name in names)
-            or len(set(names)) != len(names)
-            or set(names) != set(fields.split(","))
-            or not isinstance(rows, list)
-            or len(rows) > 100
-            or any(not isinstance(row, list) or len(row) != len(names) for row in rows)
-        ):
-            raise ValueError
-        return [dict(zip(names, row, strict=True)) for row in rows]
-    except (ValueError, KeyError, TypeError):
-        raise ProbeError("invalid_response") from None
-
-
-async def request_table(client: httpx.AsyncClient, token: str, api: str, params: dict):
-    try:
-        async with asyncio.timeout(15):
-            async with client.stream(
-                "POST",
-                ENDPOINT,
-                follow_redirects=False,
-                json={
-                    "api_name": api,
-                    "token": token,
-                    "params": params,
-                    "fields": FIELDS[api],
-                },
-            ) as response:
-                if response.status_code != 200:
-                    raise ProbeError("http_error", response.status_code)
-                raw = bytearray()
-                async for chunk in response.aiter_bytes():
-                    raw.extend(chunk)
-                    if len(raw) > MAX_BYTES:
-                        raise ProbeError("response_too_large")
-        return decode_table(bytes(raw), FIELDS[api])
-    except (TimeoutError, httpx.TimeoutException):
-        raise ProbeError("timeout") from None
-    except httpx.HTTPError:
-        raise ProbeError("transport_error") from None
 
 
 def day(value) -> date:
