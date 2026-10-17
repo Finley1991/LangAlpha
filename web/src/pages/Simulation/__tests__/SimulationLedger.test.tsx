@@ -21,7 +21,7 @@ type ValuationFixture = {
   positions: Array<{
     code: string; exchange: 'SH' | 'SZ' | 'BJ'; name: string; quantity: number; total_cost: string;
     current_quote: { price: string; currency: 'CNY'; as_of: string; fetched_at: string; freshness: 'fresh' | 'stale' | 'future' } | null;
-    realtime_pnl: { status: 'calculated' | 'pending_verification'; market_value: string | null; unrealized_pnl: string | null; as_of: string | null; reason: string | null };
+    realtime_pnl: { status: 'calculated' | 'estimated' | 'pending_verification'; market_value: string | null; unrealized_pnl: string | null; as_of: string | null; reason: string | null };
   }>;
 };
 let state: ReturnType<typeof setup>;
@@ -67,6 +67,26 @@ describe('explicit simulation confirmation', () => {
     expect(screen.getByText('持仓已变化，请重新刷新行情。')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: '持仓估值' })).toHaveTextContent('待核实');
     expect(screen.getByRole('table', { name: '持仓估值' })).not.toHaveTextContent('+250.00');
+  });
+
+  it('labels a recent non-live quote as an estimate and shows its valuation', () => {
+    state.query.data.ledger.positions = [{ code: '600000', exchange: 'SH', name: '虚构测试证券', quantity: 100, available_quantity: 100, total_cost: '1000.00', lots: [] }];
+    state.valuation.data = {
+      account_version: 1, fetched_at: '2026-10-17T02:00:00Z',
+      positions: [{
+        code: '600000', exchange: 'SH', name: '虚构测试证券', quantity: 100, total_cost: '1000.00',
+        current_quote: { price: '12.50', currency: 'CNY', as_of: '2026-10-16T01:59:55Z', fetched_at: '2026-10-17T02:00:00Z', freshness: 'stale' },
+        realtime_pnl: { status: 'estimated', market_value: '1250.00', unrealized_pnl: '250.00', as_of: '2026-10-16T01:59:55Z', reason: '按最近可用报价估算，非实时行情' },
+      }],
+    };
+
+    render(<SimulationLedger section="holdings" />);
+
+    const table = screen.getByRole('table', { name: '持仓估值' });
+    expect(table).toHaveTextContent('最近可用估算');
+    expect(table).toHaveTextContent('1250.00');
+    expect(table).toHaveTextContent('+250.00');
+    expect(table).not.toHaveTextContent('待核实');
   });
 
   it('opening the dialog creates no order; acknowledgement is required for the exact card version', () => {

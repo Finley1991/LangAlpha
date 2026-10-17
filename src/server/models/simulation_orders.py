@@ -225,7 +225,7 @@ class LedgerValuationQuote(BaseModel):
 
 
 class LedgerPositionPnl(BaseModel):
-    status: Literal["calculated", "pending_verification"]
+    status: Literal["calculated", "estimated", "pending_verification"]
     market_value: str | None = None
     unrealized_pnl: str | None = None
     currency: Literal["CNY"] = "CNY"

@@ -174,7 +174,7 @@ export default function SimulationLedger({ section = 'trading', onSectionChange 
         </div>
         {valuation.isError && <p role="alert" className="text-sm text-destructive">{message(valuation.error)} · 可手动重试。</p>}
         {valuation.data && !currentValuation && <p role="status" className="text-sm text-muted-foreground">持仓已变化，请重新刷新行情。</p>}
-        {currentValuation && <p className="text-xs text-muted-foreground">本次取数时间：{timestamp(currentValuation.fetched_at)}（北京时间）；浮动盈亏按现价 × 持仓数量 − 账本总成本计算。</p>}
+        {currentValuation && <p className="text-xs text-muted-foreground">本次取数时间：{timestamp(currentValuation.fetched_at)}（北京时间）；实时报价按现价 × 持仓数量 − 账本总成本计算，非实时报价明确标为估算。</p>}
         {ledger.positions.length ? <div className="overflow-x-auto"><table className="w-full min-w-[960px] text-sm text-left">
           <caption className="sr-only">持仓估值</caption>
           <thead><tr>{['证券', '持有数量', '可卖余额', '总成本 CNY', '显示均价 CNY', '最新报价', '市值 CNY', '浮动盈亏 CNY'].map((label) => <th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead>
@@ -182,8 +182,8 @@ export default function SimulationLedger({ section = 'trading', onSectionChange 
             const positionValuation = currentValuation?.positions.find((item) => item.code === p.code && item.exchange === p.exchange);
             const quote = positionValuation?.current_quote;
             const pnl = positionValuation?.realtime_pnl;
-            const pnlAvailable = pnl?.status === 'calculated' && pnl.unrealized_pnl !== null;
-            const freshnessLabel = quote?.freshness === 'fresh' ? '较新' : quote?.freshness === 'future' ? '时间异常' : '已过期';
+            const pnlAvailable = (pnl?.status === 'calculated' || pnl?.status === 'estimated') && pnl.unrealized_pnl !== null;
+            const freshnessLabel = quote?.freshness === 'fresh' ? '实时' : quote?.freshness === 'future' ? '时间异常' : pnl?.status === 'estimated' ? '最近可用估算' : '报价过旧';
             return <tr key={`${p.code}.${p.exchange}`}>
               <td className="p-2">{p.name}<br />{p.code}.{p.exchange}</td>
               <td className="p-2 tabular-nums">{p.quantity}</td>
@@ -191,7 +191,7 @@ export default function SimulationLedger({ section = 'trading', onSectionChange 
               <td className="p-2 tabular-nums">{p.total_cost}</td>
               <td className="p-2 tabular-nums">{displayAverage(p.total_cost, p.quantity)}</td>
               <td className="p-2 tabular-nums">{quote ? <><span>{quote.price}</span><br /><span className="text-xs text-muted-foreground">{freshnessLabel} · {timestamp(quote.as_of)}</span></> : '待核实'}</td>
-              <td className="p-2 tabular-nums">{pnl?.status === 'calculated' && pnl.market_value !== null ? pnl.market_value : '待核实'}</td>
+              <td className="p-2 tabular-nums">{pnlAvailable && pnl?.market_value !== null ? pnl.market_value : '待核实'}</td>
               <td className={`p-2 tabular-nums font-medium ${pnlAvailable ? (pnl.unrealized_pnl!.startsWith('-') ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400') : ''}`} title={pnl?.reason ?? undefined}>
                 {pnlAvailable ? `${pnl.unrealized_pnl!.startsWith('-') ? '' : '+'}${pnl.unrealized_pnl}` : (pnl ? '待核实' : '未刷新')}
               </td>

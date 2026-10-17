@@ -75,7 +75,7 @@ export interface LedgerValuationQuote {
   source_ids: string[];
 }
 export interface LedgerPositionPnl {
-  status: 'calculated' | 'pending_verification'; market_value: string | null;
+  status: 'calculated' | 'estimated' | 'pending_verification'; market_value: string | null;
   unrealized_pnl: string | null; currency: 'CNY'; as_of: string | null;
   reason: string | null; source_ids: string[];
 }
