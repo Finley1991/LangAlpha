@@ -14,6 +14,7 @@ from src.server.services import simulation_closing
 from src.server.services import simulation_research
 from src.server.services import simulation_quotes
 from src.server.services import simulation_news
+from src.server.services import simulation_financials
 from src.server.services.simulation_orders import (
     CHINA,
     SimulationError,
@@ -108,6 +109,7 @@ def content(
     research: dict | None = None,
     quotes: dict | None = None,
     news: dict | None = None,
+    financials: dict | None = None,
 ) -> dict:
     report_id = str(uuid4())
     source_id = "ledger-" + report_id
@@ -115,6 +117,10 @@ def content(
     report_missing = list(MISSING)
     if research and research.get("enabled"):
         report_missing[1] = "公告与财报正文尚未获取和核实；机构研报只代表观点"
+    if financials and financials.get("enabled"):
+        report_missing[1] = (
+            "公告与财报正文、风险说明及审计意见尚未核实；结构化财务数据仅为数值证据"
+        )
     payload = {
         "schema_version": "simulation-report-v1",
         "report_id": report_id,
@@ -207,6 +213,51 @@ def content(
         payload["scope"] = (
             "手动收盘证据检查；收盘日期按交易所日历及检查截止时间确定，取数时间不代表发布时间。缺失不回退旧价，也不以收盘价推断当前市值或收益；仅在新浪报价较新时按持仓数量 × 新浪报价 − 账本总成本计算实时未实现盈亏。未创建建议、订单或成交。"
         )
+    if financials and financials.get("enabled"):
+        payload["sources"].extend(financials["sources"])
+        for check in payload["checks"]:
+            code = check["code"] + "." + check["exchange"]
+            evidence = financials["financials"].get(code)
+            issue = financials["issues"].get(code) or financials["issues"].get("all")
+            if evidence:
+                check["financials"] = evidence
+                check["source_ids"].extend(evidence["source_ids"])
+                check["missing_data"] = [
+                    item for item in check["missing_data"] if item != MISSING[1]
+                ]
+                check["missing_data"].append(report_missing[1])
+                if not evidence["tables"]:
+                    check["missing_data"].append("未取得已披露财务报表记录，原因待核实")
+            else:
+                check["missing_data"] = [
+                    item for item in check["missing_data"] if item != MISSING[1]
+                ]
+                check["missing_data"].append(report_missing[1])
+            if issue:
+                check["missing_data"].append(issue)
+            check["missing_data"] = list(dict.fromkeys(check["missing_data"]))
+            check["counterargument"] = (
+                "结构化财务指标受报告期、合并口径和更正版本影响；不能替代公告/财报正文、风险说明、审计意见或投资论点。"
+            )
+            check["trigger"] = (
+                "核对对应报告原文与审计意见，并建立持仓论点、补齐投资约束后再检查；本报告不会创建订单。"
+            )
+        payload["missing_data"] = list(
+            dict.fromkeys(
+                item for check in payload["checks"] for item in check["missing_data"]
+            )
+        )
+        if opening_future:
+            payload["missing_data"].append("期初起算日在未来，当前记录仅为预设快照")
+        if financials["financials"]:
+            payload["title"] += " · 已接入结构化财务数据"
+            payload["summary"] = (
+                "已冻结账本、市场证据与可取得的结构化财务数据；公告/财报正文、论点和投资约束仍待核实，暂不形成买卖判断。"
+            )
+        payload["scope"] += (
+            " 已按报告截止时间查询 Tushare 最近已披露的三表及财务指标，并单独保存报告期、公告日期和披露计划；结构化数值不替代公告/年报正文，不用于成交。"
+        )
+
     if research and research.get("enabled"):
         payload["sources"].extend(research["sources"])
         source_ids_by_code: dict[str, list[str]] = {}
@@ -355,6 +406,12 @@ def content(
             " 新闻标题/短摘要来自新浪财经和东方财富个股新闻接口，按来源和抓取时间冻结。"
             "不抓取全文、不把接口缺失解释为没有相关新闻，也不据此形成买卖判断。"
         )
+    if financials and financials.get("financials"):
+        if "结构化财务数据" not in payload["title"]:
+            payload["title"] += " · 含结构化财务数据"
+        payload["summary"] += (
+            "本次另冻结 Tushare 结构化财务数值和披露日期；公告/年报正文、风险说明及审计意见仍待核实。"
+        )
     return ReportContent.model_validate(payload).model_dump(mode="json")
 
 
@@ -415,11 +472,12 @@ async def generate(user_id: str, request: ReportRequest) -> dict:
         opening_date = tx.account["opening_payload"]["opening_date"]
         cutoff = tx.now
     # No provider/model work while holding the financial account lock.
-    closing, research, quotes, news = await asyncio.gather(
+    closing, research, quotes, news, financials = await asyncio.gather(
         simulation_closing.collect(snapshot["positions"], cutoff),
         simulation_research.collect(snapshot["positions"], cutoff),
         simulation_quotes.collect(snapshot["positions"], cutoff),
         simulation_news.collect(snapshot["positions"], cutoff),
+        simulation_financials.collect(snapshot["positions"], cutoff),
     )
     async with accounts.transaction(user_id) as tx:
         require_account(tx)
@@ -444,6 +502,7 @@ async def generate(user_id: str, request: ReportRequest) -> dict:
             research if research["enabled"] or research["issues"] else None,
             quotes if quotes["sources"] or quotes["issues"] else None,
             news if news["enabled"] or news["issues"] else None,
+            financials if financials["enabled"] or financials["issues"] else None,
         )
         return detail(tx, await db.insert(tx, request, payload, digest(payload)))
 

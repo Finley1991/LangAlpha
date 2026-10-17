@@ -38,6 +38,7 @@ class ReportSource(BaseModel):
         "analyst_research",
         "stock_news",
         "community_search",
+        "financial_statement",
     ]
     title: str
     reference: str
@@ -113,6 +114,31 @@ class StockNewsEvidence(BaseModel):
     source_ids: list[str] = Field(default_factory=list)
 
 
+class FinancialTableEvidence(BaseModel):
+    table: Literal["income", "balancesheet", "cashflow", "fina_indicator"]
+    end_date: str
+    ann_date: str | None = None
+    actual_ann_date: str | None = None
+    report_type: str | None = None
+    metrics: dict[str, str]
+    source_ids: list[str]
+
+
+class FinancialDisclosureEvidence(BaseModel):
+    end_date: str
+    ann_date: str | None = None
+    planned_date: str | None = None
+    actual_date: str | None = None
+    source_ids: list[str]
+
+
+class FinancialEvidence(BaseModel):
+    tables: dict[str, FinancialTableEvidence]
+    disclosure: FinancialDisclosureEvidence | None = None
+    fetched_at: datetime
+    source_ids: list[str]
+
+
 class PositionCheck(BaseModel):
     code: str
     exchange: Literal["SH", "SZ", "BJ"]
@@ -129,6 +155,7 @@ class PositionCheck(BaseModel):
     announcements: list[AnnouncementEvidence] | None = None
     analyst_reports: list[AnalystReportEvidence] | None = None
     news: list[StockNewsEvidence] | None = None
+    financials: FinancialEvidence | None = None
 
 
 class ReportContent(BaseModel):

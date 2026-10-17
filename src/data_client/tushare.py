@@ -15,6 +15,11 @@ FIELDS = {
     "stk_limit": "ts_code,trade_date,up_limit,down_limit",
     "suspend_d": "ts_code,trade_date,suspend_type,suspend_timing",
     "rt_k": "ts_code,close,trade_time",
+    "income": "ts_code,ann_date,f_ann_date,end_date,report_type,basic_eps,total_revenue,revenue,operate_profit,total_profit,n_income,n_income_attr_p",
+    "balancesheet": "ts_code,ann_date,f_ann_date,end_date,report_type,total_cur_assets,total_assets,total_cur_liab,total_liab,total_hldr_eqy_exc_min_int,money_cap",
+    "cashflow": "ts_code,ann_date,f_ann_date,end_date,report_type,n_cashflow_act,n_cashflow_inv_act,n_cash_flows_fnc_act,c_cash_equ_end_period",
+    "fina_indicator": "ts_code,ann_date,end_date,eps,profit_dedt,gross_margin,current_ratio,quick_ratio,debt_to_assets,roe,roa,ocfps",
+    "disclosure_date": "ts_code,ann_date,end_date,pre_date,actual_date,modify_date",
 }
 
 

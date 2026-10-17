@@ -98,6 +98,42 @@ describe('frozen checking reports', () => {
     expect(within(dialog).getByText(/虚构评级报告/)).toBeInTheDocument();
   });
 
+  it('shows frozen structured financial data with period and announcement dates', () => {
+    state.detail.data = structuredClone(report);
+    state.detail.data.report.checks[0].financials = {
+      tables: {
+        income: {
+          table: 'income', end_date: '2026-06-30', ann_date: '2026-08-29',
+          actual_ann_date: '2026-08-29', report_type: '1',
+          metrics: { total_revenue: '1000000', n_income_attr_p: '75000' },
+          source_ids: ['financial-income'],
+        },
+      },
+      disclosure: {
+        end_date: '2026-09-30', planned_date: '2026-10-28', actual_date: null,
+        source_ids: ['financial-disclosure'],
+      },
+      fetched_at: '2026-10-17T02:00:00Z', source_ids: ['financial-income', 'financial-disclosure'],
+    };
+    state.detail.data.report.sources.push({
+      source_id: 'financial-income', kind: 'financial_statement',
+      title: 'Tushare income 结构化财务数据',
+      reference: 'https://tushare.pro/document/2?doc_id=33',
+      as_of: '2026-10-17T02:00:00Z', evidence: { api: 'income' },
+    });
+    render(<SimulationReports />);
+    fireEvent.click(screen.getByRole('button', { name: '查看报告 1' }));
+    const dialog = screen.getByRole('dialog');
+    openEvidence(dialog);
+    fireEvent.click(within(dialog).getByText(/财报数据/));
+    expect(within(dialog).getByText(/报告期 2026-06-30/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/2026-08-29/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/营业总收入/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/1000000/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/计划披露日期：2026-10-28/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/不替代公告或年报正文/)).toBeInTheDocument();
+  });
+
   it('shows attributed stock news as unverified source material', () => {
     state.detail.data = structuredClone(report);
     state.detail.data.report.checks[0].news = [{

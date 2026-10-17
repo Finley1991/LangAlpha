@@ -8,6 +8,22 @@ import { pendingReportRequest, finishReportRequest } from './pendingReport';
 import { useReports } from './useReports';
 
 const reportTime = createDateFormatter({ year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Shanghai' });
+const financialTables = [
+  ['income', '利润表'], ['balancesheet', '资产负债表'], ['cashflow', '现金流量表'],
+  ['fina_indicator', '财务指标'],
+] as const;
+const financialMetricLabels: Record<string, string> = {
+  basic_eps: '基本每股收益', total_revenue: '营业总收入', revenue: '营业收入',
+  operate_profit: '营业利润', total_profit: '利润总额', n_income: '净利润',
+  n_income_attr_p: '归母净利润', total_cur_assets: '流动资产合计', total_assets: '总资产',
+  total_cur_liab: '流动负债合计', total_liab: '总负债',
+  total_hldr_eqy_exc_min_int: '归母权益', money_cap: '货币资金',
+  n_cashflow_act: '经营活动现金流净额', n_cashflow_inv_act: '投资活动现金流净额',
+  n_cash_flows_fnc_act: '筹资活动现金流净额', c_cash_equ_end_period: '期末现金及现金等价物',
+  eps: '每股收益', profit_dedt: '扣非净利润', gross_margin: '毛利率',
+  current_ratio: '流动比率', quick_ratio: '速动比率', debt_to_assets: '资产负债率',
+  roe: '净资产收益率', roa: '总资产收益率', ocfps: '每股经营活动现金流',
+};
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : '暂时无法读取报告，请重试。';
@@ -75,6 +91,15 @@ function ReportBody({ data }: { data: ReportDetail }) {
             <div className="space-y-2"><h5 className="font-medium">持仓事实与判断依据</h5><p>事实：{check.fact}</p><p>判断：{check.judgment}</p><p>反证与不确定性：{check.counterargument}</p><p>重新检查条件：{check.trigger}</p></div>
             {check.current_quote && <div className="rounded-md bg-muted/40 p-3 space-y-1"><p className="font-medium">新浪实时行情快照：{check.current_quote.price} {check.current_quote.currency}</p><p>报价时间：{reportTime(new Date(check.current_quote.as_of), locale)}（北京时间）· 取数时间：{reportTime(new Date(check.current_quote.fetched_at), locale)}（北京时间）</p><p className="text-muted-foreground">非成交行情；没有核验停牌、交易日历或涨跌停边界。</p></div>}
             {check.closing_price && <div className="rounded-md bg-muted/40 p-3"><p className="font-medium">最新收盘价：{check.closing_price.close} CNY</p><p>{check.closing_price.trade_date} · 未复权历史收盘价，不用于当前成交。</p></div>}
+            {check.financials && <details className="rounded-md border border-border/70 px-3"><summary className="cursor-pointer py-2 font-medium">财报数据（{Object.keys(check.financials.tables).length} 类结构化记录）</summary><div className="space-y-3 pb-3">
+              {financialTables.map(([key, label]) => {
+                const table = check.financials?.tables[key];
+                if (!table) return null;
+                return <section key={key} className="rounded-md bg-muted/40 p-3"><h5 className="font-medium">{label} · 报告期 {table.end_date}</h5><p className="mt-1 text-xs text-muted-foreground">公告日期：{table.ann_date ?? '未提供'} · 实际公告日期：{table.actual_ann_date ?? '未提供'}{table.report_type ? ` · 报表类型 ${table.report_type === '1' ? '1（合并报表）' : table.report_type}` : ''}</p><dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">{Object.entries(table.metrics).map(([field, value]) => <div key={field} className="flex justify-between gap-2"><dt className="text-muted-foreground">{financialMetricLabels[field] ?? field}</dt><dd className="break-all text-right tabular-nums">{value}</dd></div>)}</dl></section>;
+              })}
+              {check.financials.disclosure && <p className="rounded-md border border-border/70 p-3">披露计划 · 报告期 {check.financials.disclosure.end_date} · 计划披露日期：{check.financials.disclosure.planned_date ?? '未提供'} · 实际披露日期：{check.financials.disclosure.actual_date ?? '尚无已核实日期'}</p>}
+              <p className="text-xs text-muted-foreground">结构化财务数值按接口原值展示，未做单位换算；仅供回查，不替代公告或年报正文、风险说明和审计意见，不据此形成买卖判断。取数时间：{reportTime(new Date(check.financials.fetched_at), locale)}（北京时间）。</p>
+            </div></details>}
             {check.announcements?.length ? <details className="rounded-md border border-border/70 px-3"><summary className="cursor-pointer py-2 font-medium">近期公告（{check.announcements.length}）</summary><ul className="list-disc space-y-1 pb-3 pl-5">{check.announcements.map((item) => <li key={item.id ?? `${item.ann_date}-${item.title}`}>{item.ann_date} · {item.ann_type}{item.event_category && ` · ${item.event_category}`} · {item.title}{item.pdf_path && <> · <a className="underline" href={item.pdf_path} target="_blank" rel="noopener noreferrer">公告 PDF</a></>}</li>)}</ul></details> : null}
             {check.analyst_reports?.length ? <details className="rounded-md border border-border/70 px-3"><summary className="cursor-pointer py-2 font-medium">机构研报（{check.analyst_reports.length}，仅代表观点）</summary><ul className="list-disc space-y-1 pb-3 pl-5">{check.analyst_reports.map((item) => <li key={item.id ?? `${item.published_date}-${item.title}`}>{item.published_date} · {item.institution} · {item.rating}{item.target_price && ` · 目标价 ${item.target_price}`} · {item.title}{item.url && <> · <a className="underline" href={item.url} target="_blank" rel="noopener noreferrer">查看研报来源</a></>}</li>)}</ul></details> : null}
             {check.news?.length ? <details className="rounded-md border border-border/70 px-3"><summary className="cursor-pointer py-2 font-medium">个股新闻（{check.news.length}，尚未核实）</summary><ul className="list-disc space-y-2 pb-3 pl-5">{check.news.map((item) => <li key={item.id}>{item.published_at ? `${item.published_at} · ` : ''}{item.category === 'news' ? (item.publisher ?? '个股新闻') : '历史来源'} · <a className="underline" href={item.url} target="_blank" rel="noopener noreferrer">{item.title}</a>{item.summary && <p className="mt-1 text-muted-foreground">{item.summary}</p>}</li>)}</ul><p className="pb-3 text-xs text-muted-foreground">新闻摘要仅作为回查线索；转载和摘要不代表公司正式披露或事实结论。</p></details> : null}

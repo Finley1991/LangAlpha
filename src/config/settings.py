@@ -629,6 +629,14 @@ def get_simulation_closing_token() -> str | None:
     return token or None
 
 
+def get_simulation_financials_token() -> str | None:
+    """Expose Tushare only for explicitly enabled manual report collection."""
+    if os.environ.get("SIMULATION_FINANCIALS_ENABLED") != "1":
+        return None
+    token = os.environ.get("TUSHARE_TOKEN", "").strip()
+    return token or None
+
+
 def is_simulation_research_enabled() -> bool:
     """Sina research can disclose local holdings symbols, so it is opt-in."""
     return os.environ.get("SIMULATION_RESEARCH_ENABLED") == "1"

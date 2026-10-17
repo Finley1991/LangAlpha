@@ -8,7 +8,7 @@ export interface ReportSnapshot {
   positions: LedgerPosition[]; sellable_basis: string;
 }
 export interface ReportSource {
-  source_id: string; kind: 'ledger_snapshot' | 'closing_calendar' | 'closing_price' | 'live_quote' | 'announcement' | 'analyst_research' | 'stock_news' | 'community_search'; title: string; reference: string;
+  source_id: string; kind: 'ledger_snapshot' | 'closing_calendar' | 'closing_price' | 'live_quote' | 'announcement' | 'analyst_research' | 'stock_news' | 'community_search' | 'financial_statement'; title: string; reference: string;
   as_of: string; snapshot_version?: number | null; fetched_at?: string | null; evidence?: Record<string, unknown> | null;
 }
 export interface AnnouncementEvidence {
@@ -36,6 +36,19 @@ export interface RealtimePnlEvidence {
   unrealized_pnl: string | null; currency: 'CNY'; as_of: string | null;
   reason: string | null; source_ids: string[];
 }
+export interface FinancialTableEvidence {
+  table: 'income' | 'balancesheet' | 'cashflow' | 'fina_indicator';
+  end_date: string; ann_date?: string | null; actual_ann_date?: string | null;
+  report_type?: string | null; metrics: Record<string, string>; source_ids: string[];
+}
+export interface FinancialDisclosureEvidence {
+  end_date: string; ann_date?: string | null; planned_date?: string | null;
+  actual_date?: string | null; source_ids: string[];
+}
+export interface FinancialEvidence {
+  tables: Record<string, FinancialTableEvidence>;
+  disclosure?: FinancialDisclosureEvidence | null; fetched_at: string; source_ids: string[];
+}
 export interface PositionCheck {
   code: string; exchange: 'SH' | 'SZ' | 'BJ'; name: string; fact: string;
   closing_price?: { trade_date: string; close: string; as_of: string; fetched_at: string; source_ids: string[] } | null;
@@ -43,6 +56,7 @@ export interface PositionCheck {
   realtime_pnl?: RealtimePnlEvidence | null;
   announcements?: AnnouncementEvidence[] | null; analyst_reports?: AnalystReportEvidence[] | null;
   news?: StockNewsEvidence[] | null;
+  financials?: FinancialEvidence | null;
   source_ids: string[]; judgment: string; counterargument: string; trigger: string; missing_data: string[];
 }
 export interface ReportContent {
@@ -63,7 +77,7 @@ export interface ReportSummary {
 export interface ReportPage { items: ReportSummary[]; next_cursor: number | null }
 const base = '/api/v1/users/me/simulation/reports';
 export async function generateReport(request: ReportRequest): Promise<ReportDetail> {
-  return (await api.post<ReportDetail>(base, request, { timeout: 35000 })).data;
+  return (await api.post<ReportDetail>(base, request, { timeout: 60000 })).data;
 }
 export async function getReport(id: string, signal?: AbortSignal): Promise<ReportDetail> {
   return (await api.get<ReportDetail>(`${base}/${id}`, { signal, timeout: 15000 })).data;
