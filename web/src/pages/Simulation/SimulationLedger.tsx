@@ -175,7 +175,7 @@ export default function SimulationLedger({ section = 'trading', onSectionChange 
         {valuation.isError && <p role="alert" className="text-sm text-destructive">{message(valuation.error)} · 可手动重试。</p>}
         {valuation.data && !currentValuation && <p role="status" className="text-sm text-muted-foreground">持仓已变化，请重新刷新行情。</p>}
         {currentValuation && <p className="text-xs text-muted-foreground">本次取数时间：{timestamp(currentValuation.fetched_at)}（北京时间）；浮动盈亏按现价 × 持仓数量 − 账本总成本计算。</p>}
-        {ledger.positions.length ? <div className="overflow-x-auto"><table className="w-full text-sm text-left">
+        {ledger.positions.length ? <div className="overflow-x-auto"><table className="w-full min-w-[960px] text-sm text-left">
           <caption className="sr-only">持仓估值</caption>
           <thead><tr>{['证券', '持有数量', '可卖余额', '总成本 CNY', '显示均价 CNY', '最新报价', '市值 CNY', '浮动盈亏 CNY'].map((label) => <th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead>
           <tbody>{ledger.positions.map((p) => {
@@ -193,7 +193,7 @@ export default function SimulationLedger({ section = 'trading', onSectionChange 
               <td className="p-2 tabular-nums">{quote ? <><span>{quote.price}</span><br /><span className="text-xs text-muted-foreground">{freshnessLabel} · {timestamp(quote.as_of)}</span></> : '待核实'}</td>
               <td className="p-2 tabular-nums">{pnl?.status === 'calculated' && pnl.market_value !== null ? pnl.market_value : '待核实'}</td>
               <td className={`p-2 tabular-nums font-medium ${pnlAvailable ? (pnl.unrealized_pnl!.startsWith('-') ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400') : ''}`} title={pnl?.reason ?? undefined}>
-                {pnlAvailable ? `${pnl.unrealized_pnl!.startsWith('-') ? '' : '+'}${pnl.unrealized_pnl}` : (pnl?.reason ?? '未刷新')}
+                {pnlAvailable ? `${pnl.unrealized_pnl!.startsWith('-') ? '' : '+'}${pnl.unrealized_pnl}` : (pnl ? '待核实' : '未刷新')}
               </td>
             </tr>;
           })}</tbody>
