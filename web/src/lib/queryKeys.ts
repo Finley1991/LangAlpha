@@ -11,6 +11,15 @@ import type { QueryMeta } from '@tanstack/react-query';
  *     → invalidates all workspace list queries (any page/sort)
  */
 export const queryKeys = {
+  simulation: {
+    all: ['simulation'],
+    opening: () => [...queryKeys.simulation.all, 'opening'],
+    ledger: () => [...queryKeys.simulation.all, 'ledger'],
+    reports: () => [...queryKeys.simulation.all, 'reports'],
+    report: (id?: string) => [...queryKeys.simulation.all, 'report', id],
+    events: () => [...queryKeys.simulation.all, 'events'],
+    record: (kind?: string, id?: string) => [...queryKeys.simulation.all, 'record', kind, id],
+  },
   user: {
     all:         ['user'],
     me:          () => [...queryKeys.user.all, 'me'],

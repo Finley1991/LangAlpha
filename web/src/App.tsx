@@ -34,6 +34,7 @@ const LoginPage = React.lazy(() => import('./pages/Login/LoginPage'));
 // — into the entry chunk that every visitor loads before login.
 const SharePage = lazyWithMotion(() => import('./pages/SharedChat/SharePage'));
 const SetupWizard = lazyWithMotion(() => import('./pages/Setup/SetupWizard'));
+const Simulation = React.lazy(() => import('./pages/Simulation/Simulation'));
 const PrivacyPolicy = React.lazy(() => import('./pages/Legal/PrivacyPolicy'));
 const Legal = React.lazy(() => import('./pages/Legal/Legal'));
 const ResetPassword = React.lazy(() => import('./pages/Login/ResetPassword'));
@@ -280,6 +281,11 @@ function AuthenticatedShell() {
   // flashing protected content before the gate check completes.
   if (isLoading) {
     return <PageLoading />;
+  }
+
+  // Opening balances need authentication, but no model credentials or sandbox.
+  if (location.pathname === '/simulation') {
+    return <Suspense fallback={<PageLoading />}><Simulation /></Suspense>;
   }
 
   if (needsSetup) {
