@@ -27,7 +27,7 @@ function FeeNote({ fees }: { fees: Fees }) {
 }
 
 export default function SimulationLedger({ section = 'trading', onSectionChange = () => {} }: { section?: SimulationSection; onSectionChange?: (section: SimulationSection) => void }) {
-  const { query, events, create, confirm, revise, dismiss, cancel } = useLedger();
+  const { query, events, create, confirm, revise, dismiss, cancel, valuation } = useLedger();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<{ kind: RecordKind; id: string } | null>(null);
   const [recordSection, setRecordSection] = useState(section);
@@ -41,6 +41,7 @@ export default function SimulationLedger({ section = 'trading', onSectionChange 
   const [editPrice, setEditPrice] = useState('');
   const [revisionId, setRevisionId] = useState(() => crypto.randomUUID());
   const ledger = query.data?.ledger;
+  const currentValuation = valuation.data?.account_version === ledger?.version ? valuation.data : undefined;
   const selected = ledger?.suggestions.find((s) => s.suggestion_id === selectedId);
   const recoveredRevision = revise.isError && selected?.status === 'cancelled' ? ledger?.suggestions.find((s) => s.client_request_id === revisionId && s.replaces_suggestion_id === selectedId) : undefined;
   const busy = create.isPending || confirm.isPending || revise.isPending || dismiss.isPending || cancel.isPending;
@@ -165,11 +166,37 @@ export default function SimulationLedger({ section = 'trading', onSectionChange 
           {([['当前现金', ledger.cash], ['可用现金', ledger.available_cash], ['订单预留', ledger.reserved_cash], ['起算后已实现盈亏', ledger.realized_pnl]] as const).map(([label, value]) =>
             <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="tabular-nums break-all">{value} CNY</dd></div>)}
         </dl>
-        <p className="text-sm text-muted-foreground">行情待核实，暂不计算市值、浮动收益和总资产。{ledger.sellable_basis}。</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">行情只在手动刷新时查询；报价用于本地估值，不用于模拟成交。{ledger.sellable_basis}。</p>
+          <Button variant="outline" size="sm" onClick={() => valuation.mutate()} disabled={valuation.isPending || query.isFetching || busy || ledger.positions.length === 0}>
+            {valuation.isPending ? '正在查询行情…' : '刷新行情并计算'}
+          </Button>
+        </div>
+        {valuation.isError && <p role="alert" className="text-sm text-destructive">{message(valuation.error)} · 可手动重试。</p>}
+        {valuation.data && !currentValuation && <p role="status" className="text-sm text-muted-foreground">持仓已变化，请重新刷新行情。</p>}
+        {currentValuation && <p className="text-xs text-muted-foreground">本次取数时间：{timestamp(currentValuation.fetched_at)}（北京时间）；浮动盈亏按现价 × 持仓数量 − 账本总成本计算。</p>}
         {ledger.positions.length ? <div className="overflow-x-auto"><table className="w-full text-sm text-left">
-          <caption className="sr-only">当前数量、可卖余额与精确成本</caption>
-          <thead><tr>{['证券', '持有数量', '可卖余额', '总成本 CNY', '显示均价 CNY'].map((label) => <th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead>
-          <tbody>{ledger.positions.map((p) => <tr key={`${p.code}.${p.exchange}`}><td className="p-2">{p.name}<br />{p.code}.{p.exchange}</td><td className="p-2 tabular-nums">{p.quantity}</td><td className="p-2 tabular-nums">{p.available_quantity}</td><td className="p-2 tabular-nums">{p.total_cost}</td><td className="p-2 tabular-nums">{displayAverage(p.total_cost, p.quantity)}</td></tr>)}</tbody>
+          <caption className="sr-only">持仓估值</caption>
+          <thead><tr>{['证券', '持有数量', '可卖余额', '总成本 CNY', '显示均价 CNY', '最新报价', '市值 CNY', '浮动盈亏 CNY'].map((label) => <th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead>
+          <tbody>{ledger.positions.map((p) => {
+            const positionValuation = currentValuation?.positions.find((item) => item.code === p.code && item.exchange === p.exchange);
+            const quote = positionValuation?.current_quote;
+            const pnl = positionValuation?.realtime_pnl;
+            const pnlAvailable = pnl?.status === 'calculated' && pnl.unrealized_pnl !== null;
+            const freshnessLabel = quote?.freshness === 'fresh' ? '较新' : quote?.freshness === 'future' ? '时间异常' : '已过期';
+            return <tr key={`${p.code}.${p.exchange}`}>
+              <td className="p-2">{p.name}<br />{p.code}.{p.exchange}</td>
+              <td className="p-2 tabular-nums">{p.quantity}</td>
+              <td className="p-2 tabular-nums">{p.available_quantity}</td>
+              <td className="p-2 tabular-nums">{p.total_cost}</td>
+              <td className="p-2 tabular-nums">{displayAverage(p.total_cost, p.quantity)}</td>
+              <td className="p-2 tabular-nums">{quote ? <><span>{quote.price}</span><br /><span className="text-xs text-muted-foreground">{freshnessLabel} · {timestamp(quote.as_of)}</span></> : '待核实'}</td>
+              <td className="p-2 tabular-nums">{pnl?.status === 'calculated' && pnl.market_value !== null ? pnl.market_value : '待核实'}</td>
+              <td className={`p-2 tabular-nums font-medium ${pnlAvailable ? (pnl.unrealized_pnl!.startsWith('-') ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400') : ''}`} title={pnl?.reason ?? undefined}>
+                {pnlAvailable ? `${pnl.unrealized_pnl!.startsWith('-') ? '' : '+'}${pnl.unrealized_pnl}` : (pnl?.reason ?? '未刷新')}
+              </td>
+            </tr>;
+          })}</tbody>
         </table></div> : <p className="text-sm">当前无持仓。</p>}
         <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">模拟费用与规则</summary><div className="pt-2"><FeeNote fees={ledger.fees} /></div></details>
       </section>

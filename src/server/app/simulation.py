@@ -14,12 +14,14 @@ from src.server.models.simulation_orders import (
     ConfirmationRequest,
     EventsResponse,
     LedgerResponse,
+    LedgerValuationResponse,
     RevisionRequest,
     SuggestionRequest,
 )
 from src.server.models.simulation_reports import ReportRequest, ReportDetail, ReportPage
 from src.server.services import simulation, simulation_reports as reports
 from src.server.services import simulation_orders as trading
+from src.server.services import simulation_valuation as valuation
 from src.server.utils.api import CurrentUserId, handle_api_exceptions
 
 logger = logging.getLogger(__name__)
@@ -71,6 +73,12 @@ async def financial_action(action: Awaitable):
 @handle_api_exceptions("read simulation ledger", logger)
 async def ledger(user_id: CurrentUserId):
     return LedgerResponse(ledger=await financial_action(trading.get_ledger(user_id)))
+
+
+@router.post("/ledger/valuation", response_model=LedgerValuationResponse)
+@handle_api_exceptions("refresh simulation ledger valuation", logger)
+async def refresh_ledger_valuation(user_id: CurrentUserId):
+    return await financial_action(valuation.refresh(user_id))
 
 
 @router.post("/suggestions", response_model=ActionResponse)

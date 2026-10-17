@@ -69,6 +69,23 @@ export interface Ledger {
   realized_pnl: string; positions: LedgerPosition[]; suggestions: Suggestion[]; orders: Order[]; fills: Fill[];
   fees: Fees; sellable_basis: string; history_limit: number; market_data_status: 'unverified';
 }
+export interface LedgerValuationQuote {
+  price: string; currency: 'CNY'; as_of: string; fetched_at: string;
+  provider_updated_at?: string | null; freshness: 'fresh' | 'stale' | 'future'; freshness_as_of: string;
+  source_ids: string[];
+}
+export interface LedgerPositionPnl {
+  status: 'calculated' | 'pending_verification'; market_value: string | null;
+  unrealized_pnl: string | null; currency: 'CNY'; as_of: string | null;
+  reason: string | null; source_ids: string[];
+}
+export interface LedgerPositionValuation {
+  code: string; exchange: 'SH' | 'SZ' | 'BJ'; name: string; quantity: number; total_cost: string;
+  current_quote: LedgerValuationQuote | null; realtime_pnl: LedgerPositionPnl;
+}
+export interface LedgerValuation {
+  account_version: number; fetched_at: string; positions: LedgerPositionValuation[];
+}
 export interface SimulationEvent {
   event_id: number; event_type: string; cash_delta: string; created_at: string;
   payload: { suggestion_id?: string; replaces_suggestion_id?: string; order_id?: string; fill_id?: string; account_version?: number; actor?: string; quote_evidence_id?: string };
@@ -77,6 +94,9 @@ export interface EventPage { events: SimulationEvent[]; next_cursor: number | nu
 const base = '/api/v1/users/me/simulation';
 export async function getLedger(signal?: AbortSignal): Promise<{ ledger: Ledger | null }> {
   return (await api.get<{ ledger: Ledger | null }>(`${base}/ledger`, { signal, timeout: 15000 })).data;
+}
+export async function refreshLedgerValuation(): Promise<LedgerValuation> {
+  return (await api.post<LedgerValuation>(`${base}/ledger/valuation`, undefined, { timeout: 35000 })).data;
 }
 export async function createSuggestion(request: SuggestionRequest): Promise<{ result: Suggestion }> {
   return (await api.post<{ result: Suggestion }>(`${base}/suggestions`, request, { timeout: 15000 })).data;

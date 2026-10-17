@@ -213,6 +213,43 @@ class LedgerResponse(BaseModel):
     ledger: Ledger | None
 
 
+class LedgerValuationQuote(BaseModel):
+    price: str
+    currency: Literal["CNY"]
+    as_of: datetime
+    fetched_at: datetime
+    provider_updated_at: datetime | None = None
+    freshness: Literal["fresh", "stale", "future"]
+    freshness_as_of: datetime
+    source_ids: list[str]
+
+
+class LedgerPositionPnl(BaseModel):
+    status: Literal["calculated", "pending_verification"]
+    market_value: str | None = None
+    unrealized_pnl: str | None = None
+    currency: Literal["CNY"] = "CNY"
+    as_of: datetime | None = None
+    reason: str | None = None
+    source_ids: list[str] = Field(default_factory=list)
+
+
+class LedgerPositionValuation(BaseModel):
+    code: str
+    exchange: Literal["SH", "SZ", "BJ"]
+    name: str
+    quantity: int
+    total_cost: str
+    current_quote: LedgerValuationQuote | None = None
+    realtime_pnl: LedgerPositionPnl
+
+
+class LedgerValuationResponse(BaseModel):
+    account_version: int
+    fetched_at: datetime
+    positions: list[LedgerPositionValuation]
+
+
 class ActionResponse(BaseModel):
     result: SuggestionRecord | OrderRecord | FillRecord
 

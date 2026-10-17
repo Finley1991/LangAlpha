@@ -16,15 +16,59 @@ const card: Suggestion = {
 const ledger: Ledger = { account_id: 'account-id', version: 1, as_of: '2026-10-14T02:00:00Z', cash: '1000.00', available_cash: '1000.00', reserved_cash: '0.00', realized_pnl: '0.00000000', positions: [], suggestions: [card], orders: [], fills: [], fees, sellable_basis: '成交仍须验证日历', history_limit: 100, market_data_status: 'unverified' };
 
 function mutation() { return { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null as Error | null }; }
+type ValuationFixture = {
+  account_version: number; fetched_at: string;
+  positions: Array<{
+    code: string; exchange: 'SH' | 'SZ' | 'BJ'; name: string; quantity: number; total_cost: string;
+    current_quote: { price: string; currency: 'CNY'; as_of: string; fetched_at: string; freshness: 'fresh' | 'stale' | 'future' } | null;
+    realtime_pnl: { status: 'calculated' | 'pending_verification'; market_value: string | null; unrealized_pnl: string | null; as_of: string | null; reason: string | null };
+  }>;
+};
 let state: ReturnType<typeof setup>;
 function setup() {
   return { query: { data: { ledger: structuredClone(ledger) }, isPending: false, isError: false, isFetching: false, refetch: vi.fn() },
     events: { data: { pages: [{ events: [], next_cursor: null }] as EventPage[] }, hasNextPage: false, isPending: false, isFetchingNextPage: false, fetchNextPage: vi.fn() },
-    create: mutation(), confirm: mutation(), revise: mutation(), dismiss: mutation(), cancel: mutation() };
+    create: mutation(), confirm: mutation(), revise: mutation(), dismiss: mutation(), cancel: mutation(),
+    valuation: { ...mutation(), data: null as ValuationFixture | null } };
 }
 beforeEach(() => { state = setup(); useLedgerMock.mockImplementation(() => state); useRecordMock.mockReturnValue({}); });
 
 describe('explicit simulation confirmation', () => {
+  it('shows only manually refreshed valuation for the matching ledger version', () => {
+    state.query.data.ledger.positions = [{ code: '600000', exchange: 'SH', name: '虚构测试证券', quantity: 100, available_quantity: 100, total_cost: '1000.00', lots: [] }];
+    state.valuation.data = {
+      account_version: 1, fetched_at: '2026-10-17T02:00:00Z',
+      positions: [{
+        code: '600000', exchange: 'SH', name: '虚构测试证券', quantity: 100, total_cost: '1000.00',
+        current_quote: { price: '12.50', currency: 'CNY', as_of: '2026-10-17T01:59:55Z', fetched_at: '2026-10-17T02:00:00Z', freshness: 'fresh' },
+        realtime_pnl: { status: 'calculated', market_value: '1250.00', unrealized_pnl: '250.00', as_of: '2026-10-17T01:59:55Z', reason: null },
+      }],
+    };
+    render(<SimulationLedger section="holdings" />);
+    expect(state.valuation.mutate).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '刷新行情并计算' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: '持仓估值' })).toHaveTextContent('12.50');
+    expect(screen.getByRole('table', { name: '持仓估值' })).toHaveTextContent('+250.00');
+    fireEvent.click(screen.getByRole('button', { name: '刷新行情并计算' }));
+    expect(state.valuation.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides valuation from a report based on an older ledger version', () => {
+    state.query.data.ledger.positions = [{ code: '600000', exchange: 'SH', name: '虚构测试证券', quantity: 100, available_quantity: 100, total_cost: '1000.00', lots: [] }];
+    state.valuation.data = {
+      account_version: 0, fetched_at: '2026-10-17T02:00:00Z',
+      positions: [{
+        code: '600000', exchange: 'SH', name: '虚构测试证券', quantity: 100, total_cost: '1000.00',
+        current_quote: { price: '12.50', currency: 'CNY', as_of: '2026-10-17T01:59:55Z', fetched_at: '2026-10-17T02:00:00Z', freshness: 'fresh' },
+        realtime_pnl: { status: 'calculated', market_value: '1250.00', unrealized_pnl: '250.00', as_of: '2026-10-17T01:59:55Z', reason: null },
+      }],
+    };
+    render(<SimulationLedger section="holdings" />);
+    expect(screen.getByText('持仓已变化，请重新刷新行情。')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: '持仓估值' })).toHaveTextContent('待核实');
+    expect(screen.getByRole('table', { name: '持仓估值' })).not.toHaveTextContent('+250.00');
+  });
+
   it('opening the dialog creates no order; acknowledgement is required for the exact card version', () => {
     render(<SimulationLedger />);
     fireEvent.click(screen.getByRole('button', { name: '核对并确认模拟买入' }));
